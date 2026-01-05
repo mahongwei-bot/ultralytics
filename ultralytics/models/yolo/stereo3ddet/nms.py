@@ -14,9 +14,8 @@ import torch.nn.functional as F
 def heatmap_nms(heatmap: torch.Tensor, kernel_size: int = 3) -> torch.Tensor:
     """Apply max pooling NMS to keep only local maxima in heatmaps.
 
-    This function performs non-maximum suppression on detection heatmaps using
-    max pooling. Only pixels that are local maxima within their neighborhood
-    (defined by kernel_size) are preserved; all other values are set to zero.
+    This function performs non-maximum suppression on detection heatmaps using max pooling. Only pixels that are local
+    maxima within their neighborhood (defined by kernel_size) are preserved; all other values are set to zero.
 
     Paper Reference: Section 3.1 "For inference, use the 3×3 max pooling
                      operation instead of NMS."
@@ -28,14 +27,13 @@ def heatmap_nms(heatmap: torch.Tensor, kernel_size: int = 3) -> torch.Tensor:
             - H: height
             - W: width
             The heatmap should typically be after sigmoid activation.
-        kernel_size: Size of the max pooling kernel. Default is 3 for 3×3 pooling.
-            Must be an odd positive integer.
+        kernel_size: Size of the max pooling kernel. Default is 3 for 3×3 pooling. Must be an odd positive integer.
 
     Returns:
-        torch.Tensor: Heatmap with non-maxima suppressed to 0, same shape as input.
-            Only local maxima within the kernel neighborhood are preserved.
+        torch.Tensor: Heatmap with non-maxima suppressed to 0, same shape as input. Only local maxima within the kernel
+            neighborhood are preserved.
 
-    Example:
+    Examples:
         >>> heatmap = torch.rand(1, 3, 128, 128)  # [B, C, H, W]
         >>> nms_heatmap = heatmap_nms(heatmap, kernel_size=3)
         >>> # Only local maxima remain, others are zeroed out
@@ -51,4 +49,3 @@ def heatmap_nms(heatmap: torch.Tensor, kernel_size: int = 3) -> torch.Tensor:
 
     # Zero out non-maxima
     return heatmap * keep
-

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-"""Benchmark script for Stereo 3D Detection inference speed (FPS) and accuracy (AP3D) measurement.
+r"""Benchmark script for Stereo 3D Detection inference speed (FPS) and accuracy (AP3D) measurement.
 
 This script measures inference speed and accuracy metrics for stereo 3D detection models
 on the KITTI dataset. It supports multiple configurations for comprehensive benchmarking.
@@ -53,7 +53,7 @@ import argparse
 import json
 import statistics
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -376,8 +376,8 @@ def run_accuracy_benchmark(
 ) -> BenchmarkResults:
     """Run accuracy benchmark (AP3D) on the model.
 
-    T052: Comprehensive AP3D accuracy measurement with per-class breakdown,
-    precision/recall metrics, and success criteria validation.
+    T052: Comprehensive AP3D accuracy measurement with per-class breakdown, precision/recall metrics, and success
+    criteria validation.
 
     Args:
         model: Loaded YOLO model.
@@ -388,7 +388,6 @@ def run_accuracy_benchmark(
     """
     from ultralytics.cfg import get_cfg
     from ultralytics.models.yolo.stereo3ddet.val import Stereo3DDetValidator
-    from ultralytics.utils import YAML
 
     results = BenchmarkResults()
     results.model_name = Path(config.model_path).stem
@@ -429,7 +428,7 @@ def run_accuracy_benchmark(
         LOGGER.info(f"  Target AP3D@0.7: {config.target_ap3d:.1%}")
 
     start_time = time.perf_counter()
-    metrics = validator(model=model.model)
+    validator(model=model.model)
     end_time = time.perf_counter()
 
     results.total_time_s = end_time - start_time
@@ -617,20 +616,20 @@ def print_results(results: BenchmarkResults) -> None:
 
         # Aggregate metrics
         if results.maps3d_50 is not None:
-            print(f"{'mAP3D@0.5 (mean):':<25} {results.maps3d_50:.4f} ({results.maps3d_50*100:.2f}%)")
+            print(f"{'mAP3D@0.5 (mean):':<25} {results.maps3d_50:.4f} ({results.maps3d_50 * 100:.2f}%)")
         if results.maps3d_70 is not None:
-            print(f"{'mAP3D@0.7 (mean):':<25} {results.maps3d_70:.4f} ({results.maps3d_70*100:.2f}%)")
+            print(f"{'mAP3D@0.7 (mean):':<25} {results.maps3d_70:.4f} ({results.maps3d_70 * 100:.2f}%)")
 
         # Per-class breakdown (T052)
         if results.ap3d_70_per_class:
             print(f"\n{'Per-Class AP3D@0.7:'}")
             for class_name, ap in sorted(results.ap3d_70_per_class.items()):
-                print(f"  {class_name:<18} {ap:.4f} ({ap*100:.2f}%)")
+                print(f"  {class_name:<18} {ap:.4f} ({ap * 100:.2f}%)")
 
         if results.ap3d_50_per_class:
             print(f"\n{'Per-Class AP3D@0.5:'}")
             for class_name, ap in sorted(results.ap3d_50_per_class.items()):
-                print(f"  {class_name:<18} {ap:.4f} ({ap*100:.2f}%)")
+                print(f"  {class_name:<18} {ap:.4f} ({ap * 100:.2f}%)")
 
         # Precision and Recall (T052)
         print("\n" + "-" * 50)
@@ -673,7 +672,7 @@ def print_results(results: BenchmarkResults) -> None:
             ap3d_status = "✓ PASS" if results.ap3d_passed else "✗ FAIL"
             print(f"\n{'AP3D@0.7 Target:':<25} {results.target_ap3d:.1%} (SC-001/SC-002/SC-003)")
             achieved_ap3d = results.maps3d_70 if results.maps3d_70 is not None else 0.0
-            print(f"{'AP3D@0.7 Achieved:':<25} {achieved_ap3d:.4f} ({achieved_ap3d*100:.2f}%)")
+            print(f"{'AP3D@0.7 Achieved:':<25} {achieved_ap3d:.4f} ({achieved_ap3d * 100:.2f}%)")
             print(f"{'AP3D Status:':<25} {ap3d_status}")
 
         # Overall status
@@ -992,4 +991,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-

@@ -53,9 +53,7 @@ def load_stereo_pair(
 
     # Verify images have the same size
     if left_img.shape != right_img.shape:
-        raise ValueError(
-            f"Image size mismatch: left {left_img.shape} vs right {right_img.shape}"
-        )
+        raise ValueError(f"Image size mismatch: left {left_img.shape} vs right {right_img.shape}")
 
     return left_img, right_img
 
@@ -63,8 +61,8 @@ def load_stereo_pair(
 class Stereo3DDetPredictor(DetectionPredictor):
     """Stereo 3D Detection predictor.
 
-    Extends DetectionPredictor to handle stereo image pairs (6-channel input)
-    and decode 3D bounding boxes from 10-branch model outputs.
+    Extends DetectionPredictor to handle stereo image pairs (6-channel input) and decode 3D bounding boxes from
+    10-branch model outputs.
     """
 
     def __init__(self, cfg=None, overrides: dict[str, Any] | None = None, _callbacks=None):
@@ -80,12 +78,13 @@ class Stereo3DDetPredictor(DetectionPredictor):
             overrides = {}
         if "task" not in overrides:
             overrides["task"] = "stereo3ddet"
-        
+
         # Use DEFAULT_CFG if cfg is None (BasePredictor expects this)
         from ultralytics.utils import DEFAULT_CFG
+
         if cfg is None:
             cfg = DEFAULT_CFG
-        
+
         super().__init__(cfg, overrides, _callbacks)
         self.args.task = "stereo3ddet"
         # Store calibration parameters for each image
@@ -129,8 +128,7 @@ class Stereo3DDetPredictor(DetectionPredictor):
                 stereo_pairs = [source]
             else:
                 raise ValueError(
-                    f"Invalid source format. Expected (left_path, right_path) or "
-                    f"[(left1, right1), ...], got: {source}"
+                    f"Invalid source format. Expected (left_path, right_path) or [(left1, right1), ...], got: {source}"
                 )
         else:
             raise ValueError(f"Invalid source type: {type(source)}")
@@ -158,14 +156,24 @@ class Stereo3DDetPredictor(DetectionPredictor):
                     LOGGER.warning(f"Failed to load calibration from {calib_path}: {e}")
                     # Use default calibration
                     self.calib_params[str(left_path)] = CalibrationParameters(
-                        fx=721.5377, fy=721.5377, cx=609.5593, cy=172.8540,
-                        baseline=0.54, image_width=stereo_img.shape[1], image_height=stereo_img.shape[0]
+                        fx=721.5377,
+                        fy=721.5377,
+                        cx=609.5593,
+                        cy=172.8540,
+                        baseline=0.54,
+                        image_width=stereo_img.shape[1],
+                        image_height=stereo_img.shape[0],
                     )
             else:
                 # Use default calibration
                 self.calib_params[str(left_path)] = CalibrationParameters(
-                    fx=721.5377, fy=721.5377, cx=609.5593, cy=172.8540,
-                    baseline=0.54, image_width=stereo_img.shape[1], image_height=stereo_img.shape[0]
+                    fx=721.5377,
+                    fy=721.5377,
+                    cx=609.5593,
+                    cy=172.8540,
+                    baseline=0.54,
+                    image_width=stereo_img.shape[1],
+                    image_height=stereo_img.shape[0],
                 )
 
         # Set up dataset-like structure for BasePredictor
@@ -175,12 +183,16 @@ class Stereo3DDetPredictor(DetectionPredictor):
                 self.stereo_pairs = stereo_pairs
                 self.bs = len(stereo_pairs)  # batch size
                 self.mode = "image"  # Stereo pairs are image files
-                self.source_type = type("SourceType", (), {
-                    "stream": False,
-                    "tensor": False,
-                    "screenshot": False,
-                    "from_img": False,
-                })()
+                self.source_type = type(
+                    "SourceType",
+                    (),
+                    {
+                        "stream": False,
+                        "tensor": False,
+                        "screenshot": False,
+                        "from_img": False,
+                    },
+                )()
 
             def __iter__(self):
                 # Yield batch as (paths, im0s, s) tuple
@@ -226,7 +238,9 @@ class Stereo3DDetPredictor(DetectionPredictor):
 
         return im
 
-    def postprocess(self, preds: dict[str, torch.Tensor], img: torch.Tensor, orig_imgs: list[np.ndarray], **kwargs) -> list[Results]:
+    def postprocess(
+        self, preds: dict[str, torch.Tensor], img: torch.Tensor, orig_imgs: list[np.ndarray], **kwargs
+    ) -> list[Results]:
         """Post-process model predictions to Results objects with 3D boxes.
 
         Args:
@@ -247,7 +261,7 @@ class Stereo3DDetPredictor(DetectionPredictor):
             calib = self.calib_params.get(img_path)
 
             # Extract single image predictions
-            single_preds = {k: v[i:i+1] for k, v in preds.items()}
+            single_preds = {k: v[i : i + 1] for k, v in preds.items()}
 
             # Convert CalibrationParameters to dict if needed
             calib_dict = None
@@ -266,17 +280,17 @@ class Stereo3DDetPredictor(DetectionPredictor):
             # Decode 3D boxes
             # T030: Include NMS parameters for inference consistency (GAP-003)
             # Get NMS config from args (defaults: use_nms=True, nms_kernel=3)
-            use_nms = getattr(self.args, 'use_nms', True)
-            nms_kernel = getattr(self.args, 'nms_kernel', 3)
-            
+            use_nms = getattr(self.args, "use_nms", True)
+            nms_kernel = getattr(self.args, "nms_kernel", 3)
+
             # Get imgsz and original image size for letterbox transformation
-            imgsz = getattr(self.args, 'imgsz', 384)
+            imgsz = getattr(self.args, "imgsz", 384)
             ori_shape = None
             if orig_imgs and len(orig_imgs) > i:
                 orig_img = orig_imgs[i]
                 # orig_img is 6-channel stereo image, get height and width
                 ori_shape = (orig_img.shape[0], orig_img.shape[1])  # (H, W)
-            
+
             boxes3d = decode_stereo3d_outputs(
                 single_preds,
                 conf_threshold=self.args.conf,
