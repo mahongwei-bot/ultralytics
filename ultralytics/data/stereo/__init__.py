@@ -2,9 +2,8 @@
 
 """Stereo 3D Object Detection data modules."""
 
-from ultralytics.data.stereo.calib import CalibrationParameters, load_kitti_calibration
 from ultralytics.data.stereo.box3d import Box3D
+from ultralytics.data.stereo.calib import CalibrationParameters, load_kitti_calibration
 from ultralytics.data.stereo.pair import StereoImagePair
 
-__all__ = ["CalibrationParameters", "load_kitti_calibration", "Box3D", "StereoImagePair"]
-
+__all__ = ["Box3D", "CalibrationParameters", "StereoImagePair", "load_kitti_calibration"]
