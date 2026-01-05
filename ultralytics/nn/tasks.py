@@ -34,6 +34,7 @@ from ultralytics.nn.modules import (
     C2fCIB,
     C2fPSA,
     C3Ghost,
+    C3GhostV2,
     C3k2,
     C3x,
     CBFuse,
@@ -48,7 +49,9 @@ from ultralytics.nn.modules import (
     DWConvTranspose2d,
     Focus,
     GhostBottleneck,
+    GhostBottleneckV2,
     GhostConv,
+    GhostConvV2,
     HGBlock,
     HGStem,
     ImagePoolingAttn,
@@ -1523,8 +1526,10 @@ def parse_model(d, ch, verbose=True):
             Conv,
             ConvTranspose,
             GhostConv,
+            GhostConvV2,
             Bottleneck,
             GhostBottleneck,
+            GhostBottleneckV2,
             SPP,
             SPPF,
             C2fPSA,
@@ -1545,6 +1550,7 @@ def parse_model(d, ch, verbose=True):
             C3,
             C3TR,
             C3Ghost,
+            C3GhostV2,
             torch.nn.ConvTranspose2d,
             DWConvTranspose2d,
             C3x,
@@ -1566,6 +1572,7 @@ def parse_model(d, ch, verbose=True):
             C3,
             C3TR,
             C3Ghost,
+            C3GhostV2,
             C3x,
             RepC3,
             C2fPSA,
@@ -1676,7 +1683,7 @@ def yaml_model_load(path):
         path = path.with_name(new_stem + path.suffix)
 
     unified_path = re.sub(r"(\d+)([nslmx])(.+)?$", r"\1\3", str(path))  # i.e. yolov8x.yaml -> yolov8.yaml
-    yaml_file = check_yaml(unified_path, hard=False) or check_yaml(path)
+    yaml_file = check_yaml(unified_path, hard=False) or check_yaml(str(path))
     d = YAML.load(yaml_file)  # model dict
     d["scale"] = guess_model_scale(path)
     d["yaml_file"] = str(path)
