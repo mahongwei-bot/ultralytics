@@ -82,8 +82,8 @@ class CalibrationParameters:
 def load_kitti_calibration(calib_file: str | Path) -> CalibrationParameters:
     """Load KITTI calibration parameters from file.
 
-    Extracts fx, fy, cx, cy, baseline from P2 (left camera projection matrix) and
-    Tr (transformation matrix from velodyne to left camera).
+    Extracts fx, fy, cx, cy, baseline from P2 (left camera projection matrix) and Tr (transformation matrix from
+    velodyne to left camera).
 
     Args:
         calib_file: Path to KITTI calibration file.
@@ -101,7 +101,7 @@ def load_kitti_calibration(calib_file: str | Path) -> CalibrationParameters:
 
     # Parse calibration file
     calib_data = {}
-    with open(calib_file, "r") as f:
+    with open(calib_file) as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -163,4 +163,3 @@ def load_kitti_calibration(calib_file: str | Path) -> CalibrationParameters:
         image_width=image_width,
         image_height=image_height,
     )
-

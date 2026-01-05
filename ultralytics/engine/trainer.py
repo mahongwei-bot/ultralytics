@@ -637,7 +637,7 @@ class BaseTrainer:
         try:
             if self.args.data is None:
                 raise RuntimeError(emojis(f"Dataset not specified for task '{self.args.task}' ❌"))
-            
+
             if self.args.task == "classify":
                 data = check_cls_dataset(self.args.data)
             elif str(self.args.data).rsplit(".", 1)[-1] == "ndjson":

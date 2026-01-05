@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -16,25 +15,25 @@ from ultralytics.utils.tal import TaskAlignedAssigner, make_anchors
 class Stereo3DDetYolo11LossOutput:
     total: torch.Tensor
     loss_items: torch.Tensor
-    loss_dict: Dict[str, torch.Tensor]
+    loss_dict: dict[str, torch.Tensor]
 
 
 class Stereo3DDetLossYOLO11P3(nn.Module):
     """P3-only loss for stereo3ddet using YOLO11-style bbox assignment.
 
     This reuses:
-      - TaskAlignedAssigner -> fg_mask + target_gt_idx
-      - BboxLoss (IoU + DFL)
+    - TaskAlignedAssigner -> fg_mask + target_gt_idx
+    - BboxLoss (IoU + DFL)
     And trains stereo/3D branches only on fg_mask positives, gathered via target_gt_idx.
 
     Expected batch keys (detection-format):
-      - img: Tensor [B,6,H,W]
-      - batch_idx: Tensor [N,1] or [N] (image index per GT)
-      - cls: Tensor [N,1] or [N] (class id per GT)
-      - bboxes: Tensor [N,4] normalized xywh in input image space (letterboxed)
+    - img: Tensor [B,6,H,W]
+    - batch_idx: Tensor [N,1] or [N] (image index per GT)
+    - cls: Tensor [N,1] or [N] (class id per GT)
+    - bboxes: Tensor [N,4] normalized xywh in input image space (letterboxed)
 
     Expected aux target keys:
-      - aux_targets: dict[str, Tensor] each [B, max_n, C] in feature-map units (P3 grid units)
+    - aux_targets: dict[str, Tensor] each [B, max_n, C] in feature-map units (P3 grid units)
     """
 
     def __init__(
@@ -42,7 +41,7 @@ class Stereo3DDetLossYOLO11P3(nn.Module):
         model,
         tal_topk: int = 10,
         reg_max: int | None = None,
-        loss_weights: Dict[str, float] | None = None,
+        loss_weights: dict[str, float] | None = None,
     ):
         super().__init__()
         device = next(model.parameters()).device
@@ -119,7 +118,7 @@ class Stereo3DDetLossYOLO11P3(nn.Module):
         loss_type: str = "l1",
     ) -> torch.Tensor:
         """Compute auxiliary loss on positives using gathered GT via target_gt_idx."""
-        bs, c, h, w = pred_map.shape
+        bs, c, _h, _w = pred_map.shape
         pred_flat = pred_map.permute(0, 2, 3, 1).reshape(bs, -1, c)  # [B, HW, C]
         # aux_gt: [B, max_n, C]
         gathered = aux_gt.gather(1, gt_idx.unsqueeze(-1).expand(-1, -1, c))  # [B, HW, C]
@@ -137,13 +136,15 @@ class Stereo3DDetLossYOLO11P3(nn.Module):
             return F.smooth_l1_loss(pred_pos, tgt_pos, reduction="mean")
         raise ValueError(f"Unknown aux loss_type={loss_type}")
 
-    def forward(self, preds: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]) -> Stereo3DDetYolo11LossOutput:
+    def forward(self, preds: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> Stereo3DDetYolo11LossOutput:
         # Detect feats are in preds["det"] as list with one tensor [B, no, H, W].
         det_feats = preds["det"]
         if isinstance(det_feats, tuple):
             det_feats = det_feats[1]
         if not isinstance(det_feats, list) or len(det_feats) != 1:
-            raise TypeError(f"Expected preds['det'] to be a list with 1 feature map, got {type(det_feats)} len={getattr(det_feats, '__len__', None)}")
+            raise TypeError(
+                f"Expected preds['det'] to be a list with 1 feature map, got {type(det_feats)} len={getattr(det_feats, '__len__', None)}"
+            )
         feat = det_feats[0]
 
         img = batch["img"]
@@ -203,11 +204,19 @@ class Stereo3DDetLossYOLO11P3(nn.Module):
 
         # Auxiliary losses (masked by fg_mask, targets gathered by target_gt_idx).
         aux_targets = batch.get("aux_targets", {})
-        aux_losses: Dict[str, torch.Tensor] = {}
+        aux_losses: dict[str, torch.Tensor] = {}
 
         # Only compute aux when we have targets in batch (train/val).
         if isinstance(aux_targets, dict) and aux_targets:
-            for k in ("lr_distance", "right_width", "dimensions", "orientation", "vertices", "vertex_offset", "vertex_dist"):
+            for k in (
+                "lr_distance",
+                "right_width",
+                "dimensions",
+                "orientation",
+                "vertices",
+                "vertex_offset",
+                "vertex_dist",
+            ):
                 if k not in preds or k not in aux_targets:
                     continue
                 aux_gt = aux_targets[k].to(self.device)
@@ -244,6 +253,3 @@ class Stereo3DDetLossYOLO11P3(nn.Module):
             **{k: v.detach() for k, v in aux_losses.items()},
         }
         return Stereo3DDetYolo11LossOutput(total=total, loss_items=loss_items, loss_dict=loss_dict)
-
-
-

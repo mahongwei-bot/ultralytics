@@ -90,7 +90,7 @@ try:
     assert outputs["dimensions"].shape == (batch_size, 3, height, width)
 
     print("✓ Detection head produces correct output shapes")
-    print(f"  - All 10 branches present")
+    print("  - All 10 branches present")
     print(f"  - Heatmap shape: {outputs['heatmap'].shape}")
     print(f"  - Dimensions shape: {outputs['dimensions'].shape}")
 except Exception as e:
@@ -104,7 +104,6 @@ except Exception as e:
 print("\nTest 4: Trainer initialization...")
 try:
     from ultralytics.engine.stereo.trainer import StereoTrainer
-    from ultralytics.utils import DEFAULT_CFG
 
     overrides = {
         "task": "stereo3ddet",
@@ -137,7 +136,7 @@ except Exception as e:
 # Test 5: Loss functions
 print("\nTest 5: Loss functions...")
 try:
-    from ultralytics.nn.modules.stereo.loss import FocalLoss, L1Loss, StereoLoss
+    from ultralytics.nn.modules.stereo.loss import FocalLoss, L1Loss
 
     # Test FocalLoss
     focal_loss = FocalLoss(alpha=2.0, beta=4.0)
@@ -208,4 +207,3 @@ print("  1. Prepare KITTI-format dataset")
 print("  2. Run: model = YOLO('cfg/models/stereo/stereo-centernet-s.yaml')")
 print("  3. Run: model.train(data='kitti.yaml', epochs=100)")
 print("=" * 70)
-
