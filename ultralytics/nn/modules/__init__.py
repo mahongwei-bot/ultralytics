@@ -89,7 +89,6 @@ from .head import (
     YOLOESegment,
     v10Detect,
 )
-
 from .transformer import (
     AIFI,
     MLP,
@@ -175,6 +174,8 @@ __all__ = (
     "SCDown",
     "Segment",
     "SpatialAttention",
+    "StereoCenterNetHead",
+    "StereoConv",
     "TorchVision",
     "TransformerBlock",
     "TransformerEncoderLayer",
@@ -183,6 +184,4 @@ __all__ = (
     "YOLOEDetect",
     "YOLOESegment",
     "v10Detect",
-    "StereoConv",
-    "StereoCenterNetHead",
 )

@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import torch
 
-from ultralytics.data.stereo.calib import CalibrationParameters
 from ultralytics.data.stereo.box3d import Box3D
+from ultralytics.data.stereo.calib import CalibrationParameters
 from ultralytics.data.stereo.pair import StereoImagePair
 
 
@@ -122,4 +122,3 @@ def set_random_seed():
     np.random.seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
-
