@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import cv2
 import numpy as np
@@ -9,10 +10,12 @@ import torch
 from torch.utils.data import Dataset
 
 from ultralytics.data.augment import LetterBox
-from ultralytics.models.yolo.stereo3ddet.augment import StereoAugmentationPipeline, StereoCalibration, PhotometricAugmentor
+from ultralytics.models.yolo.stereo3ddet.augment import (
+    PhotometricAugmentor,
+    StereoAugmentationPipeline,
+    StereoCalibration,
+)
 from ultralytics.utils import LOGGER
-
-import math
 
 
 def _to_hw(imgsz: int | tuple[int, int] | list[int]) -> tuple[int, int]:
@@ -37,10 +40,10 @@ class Stereo3DDetDataset(Dataset):
         root: str | Path,
         split: str,
         imgsz: int | tuple[int, int] | list[int],
-        names: Dict[int, str] | List[str] | None = None,
+        names: dict[int, str] | list[str] | None = None,
         max_samples: int | None = None,
-        output_size: Tuple[int, int] | None = None,
-        mean_dims: Dict[str, List[float]] | None = None,
+        output_size: tuple[int, int] | None = None,
+        mean_dims: dict[str, list[float]] | None = None,
     ):
         """Initialize Stereo3DDetDataset.
 
@@ -49,12 +52,12 @@ class Stereo3DDetDataset(Dataset):
             split (str): Dataset split ('train' or 'val').
             imgsz (int): Target image size for letterboxing.
             names (Dict[int, str] | List[str] | None): Class names mapping. If None, uses default.
-            max_samples (int | None): Maximum number of samples to load. If None, loads all available samples.
-                If specified, only the first max_samples samples will be loaded. Defaults to None.
-            output_size (Tuple[int, int] | None): Output feature map size (H, W) for target generation.
-                If None, computed from imgsz assuming 8x downsampling (P3 architecture).
-            mean_dims (Dict[str, List[float]] | None): Mean dimensions per class [L, W, H] in meters.
-                If None, uses default KITTI values.
+            max_samples (int | None): Maximum number of samples to load. If None, loads all available samples. If
+                specified, only the first max_samples samples will be loaded. Defaults to None.
+            output_size (Tuple[int, int] | None): Output feature map size (H, W) for target generation. If None,
+                computed from imgsz assuming 8x downsampling (P3 architecture).
+            mean_dims (Dict[str, List[float]] | None): Mean dimensions per class [L, W, H] in meters. If None, uses
+                default KITTI values.
         """
         self.root = Path(root)
         self.split = split
@@ -91,10 +94,8 @@ class Stereo3DDetDataset(Dataset):
                 LOGGER.info(f"Limited stereo dataset to {len(self.image_ids)} samples (from {total} total)")
 
         # Full stereo augmentation pipeline (photometric + geometric)
-        self._aug = StereoAugmentationPipeline(
-            photometric=PhotometricAugmentor(p_apply=0.9)
-        )
-        
+        self._aug = StereoAugmentationPipeline(photometric=PhotometricAugmentor(p_apply=0.9))
+
         # Initialize target generator for generating training/validation targets
         # Compute output_size if not provided (default to 8x downsampling for P3)
         if output_size is None:
@@ -102,12 +103,13 @@ class Stereo3DDetDataset(Dataset):
             input_h, input_w = self.imgsz
             output_size = (input_h // 8, input_w // 8)
         self.output_size = output_size
-        
+
         # Get number of classes
         num_classes = len(self.names) if self.names else 3
-        
+
         # Initialize target generator
         from ultralytics.data.stereo.target_improved import TargetGenerator
+
         self.target_generator = TargetGenerator(
             output_size=output_size,
             num_classes=num_classes,
@@ -135,7 +137,7 @@ class Stereo3DDetDataset(Dataset):
         Supports both original KITTI format (P0..P3, R0_rect, Tr_*) and the simplified converted
         format (fx, fy, cx, cy, right_cx, right_cy, baseline, image_width, image_height).
         """
-        with open(calib_file, "r") as f:
+        with open(calib_file) as f:
             lines = f.readlines()
 
         calib_dict: dict[str, Any] = {}
@@ -210,7 +212,7 @@ class Stereo3DDetDataset(Dataset):
             raise FileNotFoundError(f"Label file not found: {label_file}")
 
         labels: list[dict[str, Any]] = []
-        with open(label_file, "r") as f:
+        with open(label_file) as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -271,15 +273,15 @@ class Stereo3DDetDataset(Dataset):
 
     def _transform_labels_for_letterbox(
         self,
-        labels: List[Dict[str, Any]],
+        labels: list[dict[str, Any]],
         scale: float,
         pad_left: int,
         pad_top: int,
         orig_w: int,
         orig_h: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Transform label coordinates from original image space to letterboxed space.
-        
+
         Args:
             labels: List of label dictionaries with left_box, right_box, and optionally vertices.
             scale: Letterbox scale factor (min(imgsz / h, imgsz / w)).
@@ -287,15 +289,15 @@ class Stereo3DDetDataset(Dataset):
             pad_top: Top padding added by letterbox.
             orig_w: Original image width (after augmentation, before letterbox).
             orig_h: Original image height (after augmentation, before letterbox).
-            
+
         Returns:
             List of transformed label dictionaries.
         """
         transformed_labels = []
-        
+
         for label in labels:
             new_label = dict(label)  # Copy label to avoid modifying original
-            
+
             input_h, input_w = self.imgsz
 
             # Transform left_box
@@ -306,17 +308,17 @@ class Stereo3DDetDataset(Dataset):
                 cy_px = float(lb.get("center_y", 0)) * orig_h
                 w_px = float(lb.get("width", 0)) * orig_w
                 h_px = float(lb.get("height", 0)) * orig_h
-                
+
                 # Apply letterbox scale
                 cx_px = cx_px * scale
                 cy_px = cy_px * scale
                 w_px = w_px * scale
                 h_px = h_px * scale
-                
+
                 # Add letterbox padding
                 cx_px = cx_px + pad_left
                 cy_px = cy_px + pad_top
-                
+
                 # Normalize to letterboxed image size (H, W)
                 new_label["left_box"] = {
                     "center_x": float(cx_px / input_w),
@@ -324,7 +326,7 @@ class Stereo3DDetDataset(Dataset):
                     "width": float(w_px / input_w),
                     "height": float(h_px / input_h),
                 }
-            
+
             # Transform right_box
             if "right_box" in new_label:
                 rb = new_label["right_box"]
@@ -349,7 +351,7 @@ class Stereo3DDetDataset(Dataset):
                     "width": float(rw_px / input_w),
                     "height": float(rh_px / input_h),
                 }
-            
+
             # Transform vertices if present
             # Vertices are stored normalized to original image size [0, 1]
             if "vertices" in new_label:
@@ -361,63 +363,62 @@ class Stereo3DDetDataset(Dataset):
                         # Denormalize from original image (vertices are normalized to [0, 1])
                         vx_px = float(vx) * orig_w
                         vy_px = float(vy) * orig_h
-                        
+
                         # Apply letterbox scale
                         vx_px = vx_px * scale
                         vy_px = vy_px * scale
-                        
+
                         # Add letterbox padding
                         vx_px = vx_px + pad_left
                         vy_px = vy_px + pad_top
-                        
+
                         # Normalize to letterboxed image size (H, W)
                         transformed_vertices[v_key] = [
                             float(vx_px / input_w),
                             float(vy_px / input_h),
                         ]
-                
+
                 if transformed_vertices:
                     new_label["vertices"] = transformed_vertices
-            
+
             transformed_labels.append(new_label)
-        
+
         return transformed_labels
 
     def _transform_calib_for_letterbox(
         self,
-        calib: Dict[str, float],
+        calib: dict[str, float],
         scale: float,
         pad_left: int,
         pad_top: int,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Transform calibration parameters from original image space to letterboxed space.
-        
+
         Args:
             calib: Calibration dictionary with fx, fy, cx, cy, baseline.
             scale: Letterbox scale factor (min(imgsz / h, imgsz / w)).
             pad_left: Left padding added by letterbox.
             pad_top: Top padding added by letterbox.
-            
+
         Returns:
             Transformed calibration dictionary.
         """
         new_calib = dict(calib)  # Copy to avoid modifying original
-        
+
         # Scale focal lengths (same scale for both dimensions in letterbox)
         new_calib["fx"] = float(calib.get("fx", 0.0) * scale)
         new_calib["fy"] = float(calib.get("fy", 0.0) * scale)
-        
+
         # Scale and shift principal point
         new_calib["cx"] = float(calib.get("cx", 0.0) * scale + pad_left)
         new_calib["cy"] = float(calib.get("cy", 0.0) * scale + pad_top)
-        
+
         # Baseline is in meters, not affected by image transformations
         # new_calib["baseline"] remains unchanged
-        
-        
+
         return new_calib
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         image_id = self.image_ids[idx]
 
         # Load images (BGR)
@@ -444,7 +445,7 @@ class Stereo3DDetDataset(Dataset):
         # Load labels (normalized coordinates in original/augmented image space)
         label_file = self.label_dir / f"{image_id}.txt"
         labels = self._parse_labels(label_file)
-        
+
         # Optional stereo augmentation (train split only)
         if self.split == "train":
             calib_obj = StereoCalibration(
@@ -484,37 +485,35 @@ class Stereo3DDetDataset(Dataset):
         dw, dh = out_w - new_unpad_w, out_h - new_unpad_h
         dw /= 2
         dh /= 2
-        pad_left_l = int(round(dw - 0.1))
-        pad_top_l = int(round(dh - 0.1))
+        pad_left_l = round(dw - 0.1)
+        pad_top_l = round(dh - 0.1)
 
         stereo6_resized = self._letterbox(image=stereo6)
         left_resized = stereo6_resized[:, :, :3]
         right_resized = stereo6_resized[:, :, 3:]
-        
+
         # Transform labels from original/augmented image space to letterboxed space
         labels_transformed = self._transform_labels_for_letterbox(
             labels_aug, scale_l, pad_left_l, pad_top_l, w_aug, h_aug
         )
-        
+
         # Transform calibration from original/augmented image space to letterboxed space
-        calib_transformed = self._transform_calib_for_letterbox(
-            calib, scale_l, pad_left_l, pad_top_l
-        )
-        
+        calib_transformed = self._transform_calib_for_letterbox(calib, scale_l, pad_left_l, pad_top_l)
+
         # Stack to 6 channels (left RGB + right RGB)
         left_t = torch.from_numpy(left_resized).permute(2, 0, 1).contiguous()
         right_t = torch.from_numpy(right_resized).permute(2, 0, 1).contiguous()
         img6 = torch.cat([left_t, right_t], dim=0)
-        
+
         # Runtime validation: ensure stereo image has exactly 6 channels
         assert img6.shape[0] == 6, (
             f"Stereo image must have 6 channels (left RGB + right RGB), "
             f"but got {img6.shape[0]} channels. Check image loading."
         )
-        
+
         if img6.dtype != torch.uint8:
             img6 = img6.to(torch.uint8)
-        
+
         im_file = str(self.left_dir / f"{image_id}.png")
 
         return {
@@ -525,23 +524,22 @@ class Stereo3DDetDataset(Dataset):
             "ori_shape": (h0, w0),  # Original image size (before augmentation and letterbox)
         }
 
-    def collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def collate_fn(self, batch: list[dict[str, Any]]) -> dict[str, Any]:
         """Collate function that generates targets for training/validation.
-        
+
         Args:
             batch: List of samples from __getitem__.
-            
+
         Returns:
             Dictionary with batched images, targets, and metadata.
         """
         imgs = torch.stack([b["img"] for b in batch], 0)  # (B,6,H,W)
-        
+
         # Validate batch has 6 channels (stereo: left RGB + right RGB)
         assert imgs.shape[1] == 6, (
-            f"Stereo batch must have 6 channels, but got shape {imgs.shape}. "
-            f"Expected (B, 6, H, W) for stereo input."
+            f"Stereo batch must have 6 channels, but got shape {imgs.shape}. Expected (B, 6, H, W) for stereo input."
         )
-        
+
         labels_list = [b["labels"] for b in batch]
         calibs = [b["calib"] for b in batch]  # Collect calib for each sample (T145)
         ori_shapes = [b["ori_shape"] for b in batch]  # Original image sizes
@@ -558,8 +556,8 @@ class Stereo3DDetDataset(Dataset):
         # aux_targets[name]: [B, max_n, C] in feature-map units for P3 (stride=8).
         input_h, input_w = self.imgsz
         stride = 8.0  # P3/8 for first iteration
-        out_h = int(round(input_h / stride))
-        out_w = int(round(input_w / stride))
+        out_h = round(input_h / stride)
+        out_w = round(input_w / stride)
 
         all_batch_idx: list[int] = []
         all_cls: list[int] = []
@@ -630,7 +628,11 @@ class Stereo3DDetDataset(Dataset):
                 # -------------------------
                 dims = lab["dimensions"]  # meters
                 class_name = class_names_map.get(cls_i, "Car")
-                mean_dim = (mean_dims or {}).get(class_name, [1.0, 1.0, 1.0]) if isinstance(mean_dims, dict) else [1.0, 1.0, 1.0]
+                mean_dim = (
+                    (mean_dims or {}).get(class_name, [1.0, 1.0, 1.0])
+                    if isinstance(mean_dims, dict)
+                    else [1.0, 1.0, 1.0]
+                )
                 # [ΔH, ΔW, ΔL]
                 dim_offset = torch.tensor(
                     [

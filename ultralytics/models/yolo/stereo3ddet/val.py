@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import math
 import os
 from pathlib import Path
@@ -12,39 +11,38 @@ import numpy as np
 import torch
 
 from ultralytics.data.stereo.box3d import Box3D
-import os
 from ultralytics.data.stereo.calib import CalibrationParameters
-from ultralytics.models.yolo.stereo3ddet.metrics import Stereo3DDetMetrics
-from ultralytics.utils import LOGGER, RANK, YAML, colorstr, emojis
-from ultralytics.utils.metrics import DetMetrics, box_iou, compute_3d_iou
-from ultralytics.utils.plotting import plot_stereo3d_boxes
-from ultralytics.utils.profiling import profile_function, profile_section
 from ultralytics.engine.validator import BaseValidator
-from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
-from ultralytics.utils.nms import non_max_suppression
-
-# Import geometric construction module (GAP-001)
-from ultralytics.models.yolo.stereo3ddet.geometric import (
-    GeometricConstruction,
-    GeometricObservations,
-    CalibParams,
-    fallback_simple_triangulation,
-)
 
 # Import dense alignment module (GAP-002)
 from ultralytics.models.yolo.stereo3ddet.dense_align import (
     DenseAlignment,
 )
 
+# Import geometric construction module (GAP-001)
+from ultralytics.models.yolo.stereo3ddet.geometric import (
+    CalibParams,
+    GeometricConstruction,
+    GeometricObservations,
+    fallback_simple_triangulation,
+)
+from ultralytics.models.yolo.stereo3ddet.metrics import Stereo3DDetMetrics
+from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
+from ultralytics.utils import LOGGER, RANK, YAML
+from ultralytics.utils.metrics import DetMetrics, box_iou, compute_3d_iou
+from ultralytics.utils.nms import non_max_suppression
+from ultralytics.utils.plotting import plot_stereo3d_boxes
+from ultralytics.utils.profiling import profile_function, profile_section
+
 
 def get_geometric_config(config_path: str | Path | None = None) -> dict:
     """Load geometric construction configuration from stereo3ddet_full.yaml.
-    
+
     T015: Parse geometric_construction config section for solver parameters.
-    
+
     Args:
         config_path: Optional path to config YAML. If None, uses default path.
-        
+
     Returns:
         Dict with geometric_construction settings:
         - enabled: bool (default True)
@@ -54,11 +52,11 @@ def get_geometric_config(config_path: str | Path | None = None) -> dict:
         - fallback_on_failure: bool (default True)
     """
     global _geometric_config
-    
+
     # Return cached config if available
     if _geometric_config is not None:
         return _geometric_config
-    
+
     # Default configuration
     default_config = {
         "enabled": True,
@@ -67,14 +65,14 @@ def get_geometric_config(config_path: str | Path | None = None) -> dict:
         "damping": 1e-3,
         "fallback_on_failure": True,
     }
-    
+
     # Try to load from config file
     if config_path is None:
         # Try default location
         config_path = Path(__file__).parent.parent.parent / "cfg" / "models" / "stereo3ddet_full.yaml"
     else:
         config_path = Path(config_path)
-    
+
     if config_path.exists():
         try:
             full_config = YAML.load(str(config_path))
@@ -86,20 +84,20 @@ def get_geometric_config(config_path: str | Path | None = None) -> dict:
             _geometric_config = default_config
     else:
         _geometric_config = default_config
-    
+
     return _geometric_config
 
 
 def get_geometric_solver() -> GeometricConstruction:
     """Get or create the global geometric solver instance.
-    
+
     T014/T016: Provides a singleton solver for consistent convergence tracking.
-    
+
     Returns:
         GeometricConstruction solver instance with config-based parameters.
     """
     global _geometric_solver
-    
+
     if _geometric_solver is None:
         config = get_geometric_config()
         _geometric_solver = GeometricConstruction(
@@ -107,13 +105,13 @@ def get_geometric_solver() -> GeometricConstruction:
             tolerance=config.get("tolerance", 1e-6),
             damping=config.get("damping", 1e-3),
         )
-    
+
     return _geometric_solver
 
 
 def reset_geometric_solver() -> None:
     """Reset the global geometric solver and its statistics.
-    
+
     Call this at the start of validation to reset convergence tracking.
     """
     global _geometric_solver, _geometric_config
@@ -123,9 +121,9 @@ def reset_geometric_solver() -> None:
 
 def get_geometric_convergence_rate() -> float:
     """Get the convergence rate for SC-007 validation.
-    
+
     T016: Returns the fraction of geometric solver calls that converged.
-    
+
     Returns:
         Convergence rate between 0.0 and 1.0. Returns 1.0 if no solves yet.
     """
@@ -136,17 +134,17 @@ def get_geometric_convergence_rate() -> float:
 
 def log_geometric_statistics() -> None:
     """Log geometric solver statistics for SC-007 validation.
-    
+
     T016: Logs convergence rate and total solve count.
     """
     if _geometric_solver is None:
         LOGGER.info("Geometric solver: not initialized (disabled or no detections)")
         return
-    
+
     rate = _geometric_solver.convergence_rate
     total = _geometric_solver._total_solves
     converged = _geometric_solver._converged_solves
-    
+
     status = "✓ PASS" if rate >= 0.95 else "✗ FAIL"
     LOGGER.info(f"Geometric solver (SC-007): {converged}/{total} converged ({rate:.1%}) [{status}]")
 
@@ -158,12 +156,12 @@ _dense_alignment_config: dict | None = None
 
 def get_dense_alignment_config(config_path: str | Path | None = None) -> dict:
     """Load dense alignment configuration from stereo3ddet_full.yaml.
-    
+
     T023: Parse dense_alignment config section for depth refinement parameters.
-    
+
     Args:
         config_path: Optional path to config YAML. If None, uses default path.
-        
+
     Returns:
         Dict with dense_alignment settings:
         - enabled: bool (default True)
@@ -173,11 +171,11 @@ def get_dense_alignment_config(config_path: str | Path | None = None) -> dict:
         - patch_size: int in pixels (default 7)
     """
     global _dense_alignment_config
-    
+
     # Return cached config if available
     if _dense_alignment_config is not None:
         return _dense_alignment_config
-    
+
     # Default configuration
     default_config = {
         "enabled": True,
@@ -186,13 +184,13 @@ def get_dense_alignment_config(config_path: str | Path | None = None) -> dict:
         "depth_steps": 32,
         "patch_size": 7,
     }
-    
+
     # Try to load from config file
     if config_path is None:
         config_path = Path(__file__).parent.parent.parent / "cfg" / "models" / "stereo3ddet_full.yaml"
     else:
         config_path = Path(config_path)
-    
+
     if config_path.exists():
         try:
             full_config = YAML.load(str(config_path))
@@ -204,20 +202,20 @@ def get_dense_alignment_config(config_path: str | Path | None = None) -> dict:
             _dense_alignment_config = default_config
     else:
         _dense_alignment_config = default_config
-    
+
     return _dense_alignment_config
 
 
 def get_dense_aligner() -> DenseAlignment | None:
     """Get or create the global dense alignment instance.
-    
+
     T023: Provides a singleton aligner for consistent depth refinement.
-    
+
     Returns:
         DenseAlignment instance if enabled, None if disabled.
     """
     global _dense_aligner
-    
+
     if _dense_aligner is None:
         config = get_dense_alignment_config()
         if not config.get("enabled", True):
@@ -228,13 +226,13 @@ def get_dense_aligner() -> DenseAlignment | None:
             patch_size=config.get("patch_size", 7),
             method=config.get("method", "ncc"),
         )
-    
+
     return _dense_aligner
 
 
 def reset_dense_aligner() -> None:
     """Reset the global dense aligner.
-    
+
     Call this at the start of validation to reset dense alignment state.
     """
     global _dense_aligner, _dense_alignment_config
@@ -257,33 +255,33 @@ _occlusion_config: dict | None = None
 
 def get_occlusion_config(config_path: str | Path | None = None) -> dict:
     """Load occlusion configuration from stereo3ddet_full.yaml.
-    
+
     T040: Parse occlusion config section for dense alignment skipping.
-    
+
     Args:
         config_path: Optional path to config YAML. If None, uses default path.
-        
+
     Returns:
         Dict with occlusion settings:
             - enabled: Whether occlusion classification is enabled
             - skip_dense_for_occluded: Whether to skip dense alignment for occluded objects
     """
     global _occlusion_config
-    
+
     # Return cached config if available
     if _occlusion_config is not None:
         return _occlusion_config
-    
+
     # Default configuration
     default_config = {
         "enabled": True,
         "skip_dense_for_occluded": True,
     }
-    
+
     # Try to load from YAML config
     if config_path is None:
         config_path = Path(__file__).parent.parent.parent / "cfg" / "models" / "stereo3ddet_full.yaml"
-    
+
     try:
         if Path(config_path).exists():
             full_config = YAML.load(str(config_path))
@@ -295,13 +293,13 @@ def get_occlusion_config(config_path: str | Path | None = None) -> dict:
     except Exception as e:
         LOGGER.debug(f"Failed to load occlusion config from {config_path}: {e}")
         _occlusion_config = default_config
-    
+
     return _occlusion_config
 
 
 def reset_occlusion_config() -> None:
     """Reset the cached occlusion configuration.
-    
+
     Useful for testing or when configuration changes.
     """
     global _occlusion_config
@@ -315,38 +313,38 @@ def compute_3d_iou_batch(
     eps: float = 1e-7,
 ) -> np.ndarray:
     """Compute 3D IoU matrix between prediction and ground truth boxes using vectorized operations.
-    
+
     This function optimizes IoU computation by:
     1. Batch-generating corners for all boxes (avoiding repeated computation)
     2. Using vectorized operations where possible
     3. Only computing IoU for boxes with matching class_id
-    
+
     Args:
         pred_boxes: List of predicted Box3D objects.
         gt_boxes: List of ground truth Box3D objects.
         eps: Small value to avoid division by zero.
-    
+
     Returns:
-        IoU matrix of shape (len(pred_boxes), len(gt_boxes)) with IoU values.
-        IoU is only computed for boxes with matching class_id; others are set to 0.0.
+        IoU matrix of shape (len(pred_boxes), len(gt_boxes)) with IoU values.: IoU is only computed for boxes with
+            matching class_id; others are set to 0.0.
     """
     if len(pred_boxes) == 0 or len(gt_boxes) == 0:
         return np.zeros((len(pred_boxes), len(gt_boxes)))
-    
+
     # Initialize IoU matrix
     iou_matrix = np.zeros((len(pred_boxes), len(gt_boxes)))
-    
+
     # Extract class IDs for filtering
     pred_class_ids = np.array([box.class_id for box in pred_boxes])  # [N]
     gt_class_ids = np.array([box.class_id for box in gt_boxes])  # [M]
-    
+
     # Create class matching mask: [N, M]
     class_match = pred_class_ids[:, None] == gt_class_ids[None, :]
-    
+
     # For each matching class, compute IoU in batch
     # This optimization batches corner generation but still computes IoU per pair
     # The main speedup comes from avoiding repeated corner generation
-    
+
     # Pre-compute corners for all boxes (batch operation)
     def get_box_corners_world(boxes):
         """Get world coordinates of 8 corners for each box."""
@@ -355,40 +353,42 @@ def compute_3d_iou_batch(
             x, y, z = box.center_3d
             l, w, h = box.dimensions
             rot = box.orientation
-            
+
             # Generate 8 corners in object coordinates (KITTI convention)
             # KITTI convention: rotation_y=0 means object faces camera X direction
             # So object's length (forward direction) should be along X axis
-            corners_obj = np.array([
-                [-l / 2, l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2],  # x (length)
-                [-h / 2, -h / 2, -h / 2, -h / 2, h / 2, h / 2, h / 2, h / 2],  # y (height)
-                [w / 2, w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2],  # z (width)
-            ])  # [3, 8]
-            
+            corners_obj = np.array(
+                [
+                    [-l / 2, l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2],  # x (length)
+                    [-h / 2, -h / 2, -h / 2, -h / 2, h / 2, h / 2, h / 2, h / 2],  # y (height)
+                    [w / 2, w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2],  # z (width)
+                ]
+            )  # [3, 8]
+
             # Rotation matrix around y-axis
             cos_rot, sin_rot = np.cos(rot), np.sin(rot)
             R = np.array([[cos_rot, 0, sin_rot], [0, 1, 0], [-sin_rot, 0, cos_rot]])
-            
+
             # Rotate and translate to world coordinates
             corners_world_box = R @ corners_obj  # [3, 8]
             corners_world_box[0, :] += x
             corners_world_box[1, :] += y
             corners_world_box[2, :] += z
             corners_world.append(corners_world_box.T)  # [8, 3]
-        
+
         return np.array(corners_world)  # [N, 8, 3]
-    
+
     # Batch-generate corners for all boxes
-    pred_corners = get_box_corners_world(pred_boxes)  # [N, 8, 3]
-    gt_corners = get_box_corners_world(gt_boxes)  # [M, 8, 3]
-    
+    get_box_corners_world(pred_boxes)  # [N, 8, 3]
+    get_box_corners_world(gt_boxes)  # [M, 8, 3]
+
     # Compute IoU for matching pairs
     # Use the same logic as compute_3d_iou but with pre-computed corners
     for i in range(len(pred_boxes)):
         for j in range(len(gt_boxes)):
             if not class_match[i, j]:
                 continue
-            
+
             try:
                 # Use existing compute_3d_iou function for correctness
                 # The optimization is in batch corner generation above
@@ -396,7 +396,7 @@ def compute_3d_iou_batch(
                 iou_matrix[i, j] = iou
             except Exception:
                 iou_matrix[i, j] = 0.0
-    
+
     return iou_matrix
 
 
@@ -404,12 +404,12 @@ def _compute_letterbox_params(
     ori_h: int, ori_w: int, imgsz: int | tuple[int, int] | list[int]
 ) -> tuple[float, int, int]:
     """Compute letterbox scale and padding from original image size.
-    
+
     Args:
         ori_h: Original image height.
         ori_w: Original image width.
         imgsz: Letterboxed input size. May be a square int (e.g., 384) or (H, W).
-    
+
     Returns:
         (scale, pad_left, pad_top) tuple where:
         - scale: Letterbox scale factor (min(imgsz / ori_h, imgsz / ori_w))
@@ -421,8 +421,8 @@ def _compute_letterbox_params(
     else:
         out_h, out_w = int(imgsz[0]), int(imgsz[1])
     scale = min(out_h / ori_h, out_w / ori_w)
-    new_unpad_w = int(round(ori_w * scale))
-    new_unpad_h = int(round(ori_h * scale))
+    new_unpad_w = round(ori_w * scale)
+    new_unpad_h = round(ori_h * scale)
     dw = out_w - new_unpad_w
     dh = out_h - new_unpad_h
     pad_left = dw // 2
@@ -446,17 +446,16 @@ def _decode_stereo3d_outputs_per_sample(
     ori_shape: tuple[int, int] | None = None,
 ) -> list[Box3D]:
     """Original per-sample implementation for backward compatibility.
-    
-    This function processes a single sample (batch_size=1) using the original
-    per-detection loop implementation.
-    
-    Now supports optional geometric construction for refined 3D estimation.
-    Now supports occlusion classification for dense alignment skipping.
-    
+
+    This function processes a single sample (batch_size=1) using the original per-detection loop implementation.
+
+    Now supports optional geometric construction for refined 3D estimation. Now supports occlusion classification for
+    dense alignment skipping.
+
     Args:
         outputs: Model output tensors
         conf_threshold: Confidence threshold for filtering
-        top_k: Maximum detections to return  
+        top_k: Maximum detections to return
         calib: Camera calibration parameters
         use_nms: Enable heatmap NMS
         nms_kernel: NMS kernel size
@@ -468,6 +467,7 @@ def _decode_stereo3d_outputs_per_sample(
     """
     # Class names and mean dimensions (Paper uses 3 classes: Car, Pedestrian, Cyclist)
     from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
+
     class_names = get_paper_class_names()  # {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
     # Mean dimensions: (height, width, length) in meters
     mean_dims = {
@@ -480,7 +480,7 @@ def _decode_stereo3d_outputs_per_sample(
     if imgsz is None:
         imgsz = (384, 384)  # Default letterbox size (H, W)
     input_h, input_w = (imgsz, imgsz) if isinstance(imgsz, int) else (int(imgsz[0]), int(imgsz[1]))
-    
+
     # Get original image size (with fallback to KITTI default)
     if ori_shape is not None:
         original_height, original_width = ori_shape
@@ -488,12 +488,10 @@ def _decode_stereo3d_outputs_per_sample(
         # Fallback to KITTI default dimensions
         original_height = 375
         original_width = 1242
-    
+
     # Compute letterbox parameters
-    letterbox_scale, pad_left, pad_top = _compute_letterbox_params(
-        original_height, original_width, imgsz
-    )
-    
+    letterbox_scale, pad_left, pad_top = _compute_letterbox_params(original_height, original_width, imgsz)
+
     if calib is not None:
         fx = calib["fx"]
         fy = calib["fy"]
@@ -505,22 +503,21 @@ def _decode_stereo3d_outputs_per_sample(
         fx = fy = 721.5377
         cx, cy = 609.5593, 172.8540
         baseline = 0.54
-    
+
     # T014/T015: Determine whether to use geometric construction
     if use_geometric_construction is None:
         geo_config = get_geometric_config()
         use_geometric_construction = geo_config.get("enabled", True)
-    
+
     # T014: Get geometric solver if enabled
     geometric_solver = None
     geo_fallback = True
-    calib_params = None
     if use_geometric_construction:
         geometric_solver = get_geometric_solver()
         geo_config = get_geometric_config()
         geo_fallback = geo_config.get("fallback_on_failure", True)
         # Create CalibParams for geometric solver
-        calib_params = CalibParams(fx=fx, fy=fy, cx=cx, cy=cy, baseline=baseline)
+        CalibParams(fx=fx, fy=fy, cx=cx, cy=cy, baseline=baseline)
 
     boxes3d = []
     batch_size = outputs["heatmap"].shape[0]
@@ -535,7 +532,7 @@ def _decode_stereo3d_outputs_per_sample(
     orientation = outputs["orientation"][b]  # [8, H, W]
 
     num_classes, h, w = heatmap.shape
-    
+
     # Compute scale from feature map to letterboxed input space
     # Scale is computed dynamically from actual feature map size (architecture-agnostic)
     scale_w_letterbox = input_w / w  # w is feature map width
@@ -543,13 +540,13 @@ def _decode_stereo3d_outputs_per_sample(
 
     # Apply sigmoid to get probabilities
     heatmap = torch.sigmoid(heatmap)
-    
+
     # T028: Apply heatmap NMS (GAP-003) before topk selection
     # Paper: Section 3.1 "For inference, use the 3×3 max pooling operation instead of NMS"
     if use_nms:
         # Need to add batch dimension for heatmap_nms: [C, H, W] -> [1, C, H, W]
         heatmap = heatmap_nms(heatmap.unsqueeze(0), kernel_size=nms_kernel).squeeze(0)
-    
+
     # Flatten heatmap and get top-k detections
     heatmap_flat = heatmap.reshape(num_classes, -1)  # [C, H*W]
     scores, indices = torch.topk(heatmap_flat, k=min(top_k, heatmap_flat.numel()), dim=1)
@@ -562,9 +559,9 @@ def _decode_stereo3d_outputs_per_sample(
         for score, idx in zip(class_scores, class_indices):
             # debug
             assert score.min() >= 0 and score.max() <= 1, "score is not normalized"
-            
+
             confidence = float(score.item())
-            
+
             if confidence < conf_threshold:
                 continue
 
@@ -597,7 +594,7 @@ def _decode_stereo3d_outputs_per_sample(
             # Convert 2D center from feature map to letterboxed input space
             u_letterbox = center_x * scale_w_letterbox
             v_letterbox = center_y * scale_h_letterbox
-            
+
             # Compute depth from stereo geometry
             # IMPORTANT: d is in feature map space, must scale to letterboxed input space
             # Calibration is already in letterboxed space (from dataset transformation)
@@ -617,28 +614,28 @@ def _decode_stereo3d_outputs_per_sample(
 
             # Decode orientation from Multi-Bin representation
             orient_bins = orientation[:, y_idx, x_idx].cpu().numpy()
-            
+
             # Correct format: [conf1, conf2, sin1, cos1, sin2, cos2, pad, pad]
             # Extract bin confidences from indices 0 and 1
             bin_confidences = orient_bins[:2]  # [conf1, conf2]
             bin_idx = np.argmax(bin_confidences)  # Select bin with max confidence
-            
+
             # Get sin/cos for selected bin
             # Bin 0: sin at index 2, cos at index 3
             # Bin 1: sin at index 4, cos at index 5
             sin_val = orient_bins[2 + bin_idx * 2]  # 2 + 0*2 = 2 for bin0, 2 + 1*2 = 4 for bin1
             cos_val = orient_bins[3 + bin_idx * 2]  # 3 + 0*2 = 3 for bin0, 3 + 1*2 = 5 for bin1
-            
+
             # Bin centers: Bin 0 covers [-π, 0] centered at -π/2
             #              Bin 1 covers [0, π] centered at +π/2
-            bin_centers = np.array([-np.pi/2, np.pi/2])
-            
+            bin_centers = np.array([-np.pi / 2, np.pi / 2])
+
             # Compute residual angle
             residual = np.arctan2(sin_val, cos_val)  # This is the residual within the bin
-            
+
             # Alpha = bin_center + residual (observation angle)
             alpha = bin_centers[bin_idx] + residual
-            
+
             # Apply geometric construction if enabled and disparity is valid
             if geometric_solver is not None and d_letterbox > 1.0:
                 # IMPORTANT: Convert to original coordinates for geometric solver
@@ -646,17 +643,17 @@ def _decode_stereo3d_outputs_per_sample(
                 u_orig = (u_letterbox - pad_left) / letterbox_scale
                 v_orig = (v_letterbox - pad_top) / letterbox_scale
                 d_orig = d_letterbox / letterbox_scale  # Disparity scales with image
-                
+
                 # Get original calibration (reverse letterbox transformation)
                 fx_orig = fx / letterbox_scale
                 fy_orig = fy / letterbox_scale
                 cx_orig = (cx - pad_left) / letterbox_scale
                 cy_orig = (cy - pad_top) / letterbox_scale
-                
+
                 # Build observations for geometric solver using original coordinates
                 u_right_orig = u_orig - d_orig
                 v_right_orig = v_orig  # Same v due to epipolar constraint
-                
+
                 observations = GeometricObservations(
                     ul=u_orig,
                     vl=v_orig,
@@ -667,18 +664,18 @@ def _decode_stereo3d_outputs_per_sample(
                     up=u_orig,  # Perspective keypoint (simplified: use center)
                     vp=v_orig,
                 )
-                
+
                 # Create original calibration params for solver
                 calib_params_orig = CalibParams(fx=fx_orig, fy=fy_orig, cx=cx_orig, cy=cy_orig, baseline=baseline)
-                
+
                 # Initial depth estimate for solver (using original coordinates)
                 z_init = (fx_orig * baseline) / (d_orig + 1e-6)
-                
+
                 # Initial theta from alpha and initial position estimate
                 x_init = (u_orig - cx_orig) * z_init / fx_orig
                 theta_init = alpha + np.arctan2(x_init, z_init)
                 theta_init = float(np.arctan2(np.sin(theta_init), np.cos(theta_init)))
-                
+
                 # Solve using geometric construction with original coordinates
                 x_3d, y_3d, z_3d, theta, converged = geometric_solver.solve(
                     observations=observations,
@@ -687,10 +684,10 @@ def _decode_stereo3d_outputs_per_sample(
                     calib=calib_params_orig,
                     z_init=z_init,
                 )
-                
+
                 # Fallback if solver failed and fallback is enabled
                 if not converged and geo_fallback:
-                    x_3d, y_3d, z_3d, theta = fallback_simple_triangulation (
+                    x_3d, y_3d, z_3d, theta = fallback_simple_triangulation(
                         center_2d=(u_orig, v_orig),
                         disparity=d_orig,
                         calib=calib_params_orig,
@@ -708,23 +705,23 @@ def _decode_stereo3d_outputs_per_sample(
                 # IMPORTANT: 3D coordinates should be in original camera space, not letterboxed
                 u_orig = (u_letterbox - pad_left) / letterbox_scale
                 v_orig = (v_letterbox - pad_top) / letterbox_scale
-                
+
                 # Get original calibration (reverse letterbox transformation)
                 fx_orig = fx / letterbox_scale
                 fy_orig = fy / letterbox_scale
                 cx_orig = (cx - pad_left) / letterbox_scale
                 cy_orig = (cy - pad_top) / letterbox_scale
-                
+
                 # Calculate 3D position using original coordinates and calibration
                 x_3d = float((u_orig - cx_orig) * depth / fx_orig)
                 y_3d = float((v_orig - cy_orig) * depth / fy_orig)
                 z_3d = float(depth)
-                
+
                 # Convert observation angle α to global yaw θ
                 # θ = α + arctan(x/z)
                 ray_angle = np.arctan2(x_3d, z_3d)
                 theta = alpha + ray_angle
-                
+
                 # Normalize to [-π, π]
                 theta = np.arctan2(np.sin(theta), np.cos(theta))
 
@@ -735,19 +732,19 @@ def _decode_stereo3d_outputs_per_sample(
             y_min_letterbox = v_letterbox - box_h_letterbox / 2
             x_max_letterbox = u_letterbox + box_w_letterbox / 2
             y_max_letterbox = v_letterbox + box_h_letterbox / 2
-            
+
             # Reverse letterbox transformation
             x_min = (x_min_letterbox - pad_left) / letterbox_scale
             y_min = (y_min_letterbox - pad_top) / letterbox_scale
             x_max = (x_max_letterbox - pad_left) / letterbox_scale
             y_max = (y_max_letterbox - pad_top) / letterbox_scale
-            
+
             # Final safety: enforce xyxy ordering (prevents x_min>=x_max / y_min>=y_max)
             if x_min > x_max:
                 x_min, x_max = x_max, x_min
             if y_min > y_max:
                 y_min, y_max = y_max, y_min
-            
+
             # Create Box3D object
             box3d = Box3D(
                 center_3d=(float(x_3d), float(y_3d), float(z_3d)),
@@ -765,24 +762,26 @@ def _decode_stereo3d_outputs_per_sample(
     if use_occlusion_classification is None:
         occ_config = get_occlusion_config()
         use_occlusion_classification = occ_config.get("enabled", True)
-    
+
     # T040: Classify occlusion if enabled
     # Store occlusion indices for later use by dense alignment (when implemented)
     if use_occlusion_classification and len(boxes3d) > 0:
         # Convert Box3D objects to dict format for classify_occlusion
         detections_for_occlusion = []
         for box in boxes3d:
-            detections_for_occlusion.append({
-                "bbox_2d": box.bbox_2d,
-                "center_3d": box.center_3d,
-            })
-        
+            detections_for_occlusion.append(
+                {
+                    "bbox_2d": box.bbox_2d,
+                    "center_3d": box.center_3d,
+                }
+            )
+
         # Run occlusion classification
-        occluded_indices, unoccluded_indices = classify_occlusion(
+        occluded_indices, _unoccluded_indices = classify_occlusion(
             detections_for_occlusion,
             image_width=int(original_width),
         )
-        
+
         # T040: Store occlusion classification results in Box3D metadata
         # This enables downstream processing (like dense alignment) to check occlusion status
         for idx, box in enumerate(boxes3d):
@@ -837,11 +836,10 @@ def decode_stereo3d_outputs(
             - Single dict (shared across batch): dict with keys: fx, fy, cx, cy, baseline
             - List of dicts (one per batch item): list[dict] with same keys
         use_nms: Whether to apply heatmap NMS (GAP-003). Default True.
-            Paper: Section 3.1 "For inference, use the 3×3 max pooling operation instead of NMS"
+        Paper: Section 3.1 "For inference, use the 3×3 max pooling operation instead of NMS"
         nms_kernel: Kernel size for max pooling NMS. Default 3.
-        use_occlusion_classification: Enable occlusion classification (GAP-006).
-            When enabled, Box3D.occluded is set based on depth-line algorithm.
-            None = use config default. Default enables for dense alignment support.
+        use_occlusion_classification: Enable occlusion classification (GAP-006). When enabled, Box3D.occluded is set
+            based on depth-line algorithm. None = use config default. Default enables for dense alignment support.
 
     Returns:
         - If batch_size == 1: list[Box3D] (backward compatibility)
@@ -853,7 +851,7 @@ def decode_stereo3d_outputs(
     # T213: Backward compatibility - detect single sample and use fallback
     batch_size = outputs["heatmap"].shape[0]
     is_single_sample = batch_size == 1
-    
+
     # T213: Fallback to original per-sample processing for single sample or edge cases
     if is_single_sample:
         # Use original implementation for single sample (backward compatibility)
@@ -863,18 +861,23 @@ def decode_stereo3d_outputs(
             ori_shape_single = ori_shapes[0]
         if isinstance(calib, list):
             calib = calib[0]
-        
+
         return _decode_stereo3d_outputs_per_sample(
-            outputs, conf_threshold, top_k, calib,
-            use_nms=use_nms, nms_kernel=nms_kernel,
+            outputs,
+            conf_threshold,
+            top_k,
+            calib,
+            use_nms=use_nms,
+            nms_kernel=nms_kernel,
             use_occlusion_classification=use_occlusion_classification,
             imgsz=imgsz,
             ori_shape=ori_shape_single,
         )
-    
+
     # T206-T211: Batch processing implementation
     # Class names and mean dimensions (Paper uses 3 classes: Car, Pedestrian, Cyclist)
     from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
+
     class_names = get_paper_class_names()  # {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
     # Mean dimensions: (height, width, length) in meters
     mean_dims = {
@@ -882,12 +885,12 @@ def decode_stereo3d_outputs(
         1: (1.73, 0.50, 0.80),  # Pedestrian
         2: (1.77, 0.60, 1.76),  # Cyclist
     }
-    
+
     # Get letterbox parameters
     if imgsz is None:
         imgsz = (384, 384)  # Default letterbox size (H, W)
     input_h, input_w = (imgsz, imgsz) if isinstance(imgsz, int) else (int(imgsz[0]), int(imgsz[1]))
-    
+
     # Get original image sizes (with fallback to KITTI default)
     if ori_shapes is None or len(ori_shapes) == 0:
         # Use default KITTI dimensions for all batch items
@@ -937,7 +940,7 @@ def decode_stereo3d_outputs(
     orientation = outputs["orientation"]  # [B, 8, H, W]
 
     num_classes, h, w = heatmap.shape[1], heatmap.shape[2], heatmap.shape[3]
-    
+
     # Compute scale from feature map to letterboxed input space
     # Scale is computed dynamically from actual feature map size (architecture-agnostic)
     scale_w_letterbox = input_w / w  # w is feature map width
@@ -946,15 +949,15 @@ def decode_stereo3d_outputs(
     # T207: Vectorize heatmap peak detection for batch
     # Apply sigmoid to get probabilities
     heatmap = torch.sigmoid(heatmap)
-    
+
     # T028: Apply heatmap NMS (GAP-003) before topk selection
     # Paper: Section 3.1 "For inference, use the 3×3 max pooling operation instead of NMS"
     if use_nms:
         heatmap = heatmap_nms(heatmap, kernel_size=nms_kernel)
-    
+
     # Flatten heatmap: [B, C, H*W]
     heatmap_flat = heatmap.reshape(batch_size, num_classes, -1)  # [B, C, H*W]
-    
+
     # Get top-k scores and indices for each batch and class
     # Use torch.topk across the spatial dimension
     topk_scores, topk_indices = torch.topk(heatmap_flat, k=min(top_k, heatmap_flat.shape[2]), dim=2)  # [B, C, K]
@@ -962,20 +965,20 @@ def decode_stereo3d_outputs(
     # T207, T208, T209: Vectorized batch processing
     # Process each batch item with optimized operations
     batch_results = []
-    
+
     for b in range(batch_size):
         boxes3d_batch = []
-        
+
         # Get original image size for this batch item
         if b < len(ori_shapes):
             ori_h, ori_w = ori_shapes[b]
         else:
             # Fallback to KITTI default
             ori_h, ori_w = 375, 1242
-        
+
         # Compute letterbox parameters for this batch item
         letterbox_scale, pad_left, pad_top = _compute_letterbox_params(ori_h, ori_w, imgsz)
-        
+
         # Get calibration for this batch item
         if shared_calib:
             fx_b = fx
@@ -989,23 +992,23 @@ def decode_stereo3d_outputs(
             cx_b = cx_tensor[b].item()
             cy_b = cy_tensor[b].item()
             baseline_b = baseline_tensor[b].item()
-        
+
         # T207: Use pre-computed top-k scores and indices for this batch item
         batch_scores = topk_scores[b]  # [C, K]
         batch_indices = topk_indices[b]  # [C, K]
-        
+
         # T209: Keep tensors on GPU, only move to CPU when creating Box3D
         batch_offset = offset[b]  # [2, H, W] - keep on GPU
         batch_bbox_size = bbox_size[b]  # [2, H, W] - keep on GPU
         batch_lr_distance = lr_distance[b]  # [1, H, W] - keep on GPU
         batch_dimensions = dimensions[b]  # [3, H, W] - keep on GPU
         batch_orientation = orientation[b]  # [8, H, W] - keep on GPU
-        
+
         for c in range(num_classes):
             # Filter to only paper classes (0, 1, 2 = Car, Pedestrian, Cyclist)
             if c not in mean_dims:
                 continue
-            
+
             class_scores = batch_scores[c]  # [K]
             class_indices = batch_indices[c]  # [K]
             mean_h, mean_w, mean_l = mean_dims[c]
@@ -1017,24 +1020,30 @@ def decode_stereo3d_outputs(
                 continue
             valid_scores = class_scores[valid_mask]
             valid_indices = class_indices[valid_mask]
-            
+
             # T207: Vectorize coordinate conversion
             y_indices = valid_indices // w  # [K_valid]
-            x_indices = valid_indices % w   # [K_valid]
-            
+            x_indices = valid_indices % w  # [K_valid]
+
             # T208: Vectorize offset and bbox_size extraction using gather
             # Gather offset values: [K_valid, 2]
-            offset_yx = torch.stack([
-                batch_offset[0, y_indices, x_indices],  # dx
-                batch_offset[1, y_indices, x_indices],  # dy
-            ], dim=1)  # [K_valid, 2]
-            
+            offset_yx = torch.stack(
+                [
+                    batch_offset[0, y_indices, x_indices],  # dx
+                    batch_offset[1, y_indices, x_indices],  # dy
+                ],
+                dim=1,
+            )  # [K_valid, 2]
+
             # Gather bbox_size values: [K_valid, 2]
-            bbox_size_yx = torch.stack([
-                batch_bbox_size[0, y_indices, x_indices],  # w
-                batch_bbox_size[1, y_indices, x_indices],  # h
-            ], dim=1)  # [K_valid, 2]
-            
+            bbox_size_yx = torch.stack(
+                [
+                    batch_bbox_size[0, y_indices, x_indices],  # w
+                    batch_bbox_size[1, y_indices, x_indices],  # h
+                ],
+                dim=1,
+            )  # [K_valid, 2]
+
             # Safety: bbox_size should be positive (it represents width/height in feature-map units),
             # but the head outputs are unconstrained. Clamp here to avoid invalid xyxy boxes.
             # Also guard against NaN/Inf to keep downstream numpy ops stable.
@@ -1056,29 +1065,29 @@ def decode_stereo3d_outputs(
                     )
             bbox_size_yx = torch.nan_to_num(bbox_size_yx, nan=0.0, posinf=0.0, neginf=0.0)
             bbox_size_yx = torch.clamp(bbox_size_yx, min=1e-3)
-            
+
             # Gather lr_distance: [K_valid]
             d_values = batch_lr_distance[0, y_indices, x_indices]  # [K_valid]
-            
+
             # T208: Vectorize dimension decoding
             # Gather dimension offsets: [K_valid, 3]
             dim_offsets = batch_dimensions[:, y_indices, x_indices].t()  # [K_valid, 3]
-            
+
             # T208: Vectorize orientation decoding
             # Gather orientation bins: [K_valid, 8]
             orient_bins = batch_orientation[:, y_indices, x_indices].t()  # [K_valid, 8]
-            
+
             # T209: Compute all values on GPU before moving to CPU
             # Refined 2D centers
             center_x = x_indices.float() + offset_yx[:, 0]  # [K_valid]
             center_y = y_indices.float() + offset_yx[:, 1]  # [K_valid]
-            
+
             # Convert 2D centers from feature map to letterboxed input space (vectorized)
             scale_w_letterbox_tensor = torch.tensor(scale_w_letterbox, device=device, dtype=center_x.dtype)
             scale_h_letterbox_tensor = torch.tensor(scale_h_letterbox, device=device, dtype=center_y.dtype)
             u_values_letterbox = center_x * scale_w_letterbox_tensor  # [K_valid]
             v_values_letterbox = center_y * scale_h_letterbox_tensor  # [K_valid]
-            
+
             # Compute depth from stereo geometry (vectorized)
             # IMPORTANT: d_values is in feature map space, must scale to letterboxed input space
             # Calibration is already in letterboxed space (from dataset transformation)
@@ -1088,39 +1097,39 @@ def decode_stereo3d_outputs(
             depth_values = torch.where(
                 d_values_letterbox > 0,
                 (fx_b_tensor * baseline_b_tensor) / (d_values_letterbox + 1e-6),
-                torch.tensor(50.0, device=device, dtype=d_values.dtype)  # Default depth
+                torch.tensor(50.0, device=device, dtype=d_values.dtype),  # Default depth
             )  # [K_valid]
-            
+
             # Compute 3D position
             # IMPORTANT: Convert letterboxed coordinates to original before 3D calculation
             # 3D coordinates should be in original camera space, not letterboxed space
             pad_left_tensor = torch.tensor(pad_left, device=device, dtype=u_values_letterbox.dtype)
             pad_top_tensor = torch.tensor(pad_top, device=device, dtype=v_values_letterbox.dtype)
             letterbox_scale_tensor = torch.tensor(letterbox_scale, device=device, dtype=u_values_letterbox.dtype)
-            
+
             # Convert to original image coordinates
             u_values_orig = (u_values_letterbox - pad_left_tensor) / letterbox_scale_tensor  # [K_valid]
             v_values_orig = (v_values_letterbox - pad_top_tensor) / letterbox_scale_tensor  # [K_valid]
-            
+
             # Get original calibration (reverse letterbox transformation)
             fx_orig = fx_b / letterbox_scale
             fy_orig = fy_b / letterbox_scale
             cx_orig = (cx_b - pad_left) / letterbox_scale
             cy_orig = (cy_b - pad_top) / letterbox_scale
-            
+
             cx_orig_tensor = torch.tensor(cx_orig, device=device, dtype=u_values_letterbox.dtype)
             cy_orig_tensor = torch.tensor(cy_orig, device=device, dtype=v_values_letterbox.dtype)
             fx_orig_tensor = torch.tensor(fx_orig, device=device, dtype=depth_values.dtype)
             fy_orig_tensor = torch.tensor(fy_orig, device=device, dtype=depth_values.dtype)
-            
+
             # Calculate 3D position using original coordinates and calibration
             x_3d_values = (u_values_orig - cx_orig_tensor) * depth_values / fx_orig_tensor  # [K_valid]
             y_3d_values = (v_values_orig - cy_orig_tensor) * depth_values / fy_orig_tensor  # [K_valid]
             z_3d_values = depth_values  # [K_valid]
-            
+
             # u_values_orig and v_values_orig already calculated above for 3D position
             # Reuse them for bbox_2d calculation
-            
+
             # Decode dimensions (vectorized)
             mean_h_tensor = torch.tensor(mean_h, device=device, dtype=dim_offsets.dtype)
             mean_w_tensor = torch.tensor(mean_w, device=device, dtype=dim_offsets.dtype)
@@ -1128,14 +1137,14 @@ def decode_stereo3d_outputs(
             height_values = torch.clamp(mean_h_tensor + dim_offsets[:, 0], min=0.1)  # [K_valid]
             width_values = torch.clamp(mean_w_tensor + dim_offsets[:, 1], min=0.1)  # [K_valid]
             length_values = torch.clamp(mean_l_tensor + dim_offsets[:, 2], min=0.1)  # [K_valid]
-            
+
             # Decode orientation from Multi-Bin (vectorized)
             # Correct format: [conf1, conf2, sin1, cos1, sin2, cos2, pad, pad]
             # orient_bins: [K_valid, 8]
             # Extract bin confidences from indices 0 and 1
             bin_confidences = orient_bins[:, :2]  # [K_valid, 2] - [conf1, conf2] for each detection
             bin_indices = torch.argmax(bin_confidences, dim=1)  # [K_valid] - which bin (0 or 1)
-            
+
             # Gather sin/cos values for selected bins
             # Bin 0: sin at index 2, cos at index 3
             # Bin 1: sin at index 4, cos at index 5
@@ -1143,25 +1152,25 @@ def decode_stereo3d_outputs(
             cos_indices = 3 + bin_indices * 2  # [K_valid] - cos indices: 3 for bin0, 5 for bin1
             sin_vals = orient_bins[torch.arange(len(bin_indices), device=device), sin_indices]
             cos_vals = orient_bins[torch.arange(len(bin_indices), device=device), cos_indices]
-            
+
             # Bin centers: Bin 0 covers [-π, 0] centered at -π/2
             #              Bin 1 covers [0, π] centered at +π/2
-            bin_centers = torch.tensor([-np.pi/2, np.pi/2], device=device, dtype=orient_bins.dtype)
-            
+            bin_centers = torch.tensor([-np.pi / 2, np.pi / 2], device=device, dtype=orient_bins.dtype)
+
             # Compute residual angle
             residual = torch.atan2(sin_vals, cos_vals)  # This is the residual within the bin
-            
+
             # Alpha = bin_center + residual (observation angle)
             alpha_values = bin_centers[bin_indices] + residual  # [K_valid]
-            
+
             # Convert observation angle α to global yaw θ
             # θ = α + arctan(x/z)
             ray_angle = torch.atan2(x_3d_values, z_3d_values)  # [K_valid]
             theta_values = alpha_values + ray_angle  # [K_valid] - global yaw
-            
+
             # Normalize to [-π, π]
             theta_values = torch.atan2(torch.sin(theta_values), torch.cos(theta_values))
-            
+
             # T209: Move to CPU only when creating Box3D objects
             # Convert to numpy/cpu for Box3D creation
             x_3d_cpu = x_3d_values.cpu().numpy()
@@ -1176,31 +1185,31 @@ def decode_stereo3d_outputs(
             box_h_cpu = bbox_size_yx[:, 1].cpu().numpy()
             center_x_cpu = center_x.cpu().numpy()
             center_y_cpu = center_y.cpu().numpy()
-            
+
             # Convert bbox from feature map to letterboxed, then reverse letterbox (vectorized)
             # Use numpy for CPU-side calculations
             box_w_letterbox = box_w_cpu * scale_w_letterbox
             box_h_letterbox = box_h_cpu * scale_h_letterbox
             center_x_letterbox = center_x_cpu * scale_w_letterbox
             center_y_letterbox = center_y_cpu * scale_h_letterbox
-            
+
             x_min_letterbox = center_x_letterbox - box_w_letterbox / 2
             y_min_letterbox = center_y_letterbox - box_h_letterbox / 2
             x_max_letterbox = center_x_letterbox + box_w_letterbox / 2
             y_max_letterbox = center_y_letterbox + box_h_letterbox / 2
-            
+
             # Reverse letterbox transformation
             x_min = (x_min_letterbox - pad_left) / letterbox_scale
             y_min = (y_min_letterbox - pad_top) / letterbox_scale
             x_max = (x_max_letterbox - pad_left) / letterbox_scale
             y_max = (y_max_letterbox - pad_top) / letterbox_scale
-            
+
             # Final safety: enforce xyxy ordering (prevents warnings and downstream metric issues)
             x1 = np.minimum(x_min, x_max)
             x2 = np.maximum(x_min, x_max)
             y1 = np.minimum(y_min, y_max)
             y2 = np.maximum(y_min, y_max)
-            
+
             # Create Box3D objects
             for i in range(len(valid_scores)):
                 box3d = Box3D(
@@ -1218,10 +1227,11 @@ def decode_stereo3d_outputs(
                     ),
                 )
                 boxes3d_batch.append(box3d)
-        
+
         batch_results.append(boxes3d_batch)
 
     return batch_results
+
 
 def _labels_to_box3d_list(labels: list[dict[str, Any]], calib: dict[str, float] | None = None) -> list[Box3D]:
     """Convert label dictionaries to Box3D objects.
@@ -1248,7 +1258,7 @@ def _labels_to_box3d_list(labels: list[dict[str, Any]], calib: dict[str, float] 
         # This ensures train/eval consistency since training uses lr_distance
         left_box = label["left_box"]
         right_box = label["right_box"]
-        
+
         # Handle both dict and CalibrationParameters objects
         if isinstance(calib, dict):
             calib = CalibrationParameters.from_dict(calib)
@@ -1301,11 +1311,12 @@ def _labels_to_box3d_list(labels: list[dict[str, Any]], calib: dict[str, float] 
         boxes3d.append(box3d)
     return boxes3d
 
+
 class Stereo3DDetValidator(BaseValidator):
     """Stereo 3D Detection Validator.
 
-    Extends BaseValidator to implement 3D detection validation with AP3D metrics.
-    Computes 3D IoU, matches predictions to ground truth, and calculates AP3D at IoU 0.5 and 0.7.
+    Extends BaseValidator to implement 3D detection validation with AP3D metrics. Computes 3D IoU, matches predictions
+    to ground truth, and calculates AP3D at IoU 0.5 and 0.7.
     """
 
     def __init__(self, dataloader=None, save_dir=None, args=None, _callbacks=None) -> None:
@@ -1362,6 +1373,7 @@ class Stereo3DDetValidator(BaseValidator):
 
         # Names/nc fallback - use paper classes (3 classes: Car, Pedestrian, Cyclist)
         from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
+
         names = data_cfg.get("names") or get_paper_class_names()  # {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
         nc = data_cfg.get("nc", len(names))
 
@@ -1385,12 +1397,12 @@ class Stereo3DDetValidator(BaseValidator):
 
     def preprocess(self, batch: dict[str, Any]) -> dict[str, Any]:
         """Normalize 6-channel images to float [0,1] and move targets to device.
-        
+
         Targets are now generated in the dataset's collate_fn, so we just need to
         move them to the device if they're not already there.
         """
         imgs = batch["img"].to(self.device, non_blocking=True)
-        batch["img"] = (imgs.half() if self.args.half else imgs.float()) / 255.0        
+        batch["img"] = (imgs.half() if self.args.half else imgs.float()) / 255.0
         # Move targets to device if present (dataset-dependent)
         if "targets" in batch and isinstance(batch["targets"], dict):
             batch["targets"] = {k: v.to(self.device, non_blocking=True) for k, v in batch["targets"].items()}
@@ -1399,7 +1411,7 @@ class Stereo3DDetValidator(BaseValidator):
         for k in ("batch_idx", "cls", "bboxes"):
             if k in batch and isinstance(batch[k], torch.Tensor):
                 batch[k] = batch[k].to(self.device, non_blocking=True)
-        
+
         return batch
 
     def postprocess(self, preds: dict[str, torch.Tensor]) -> list[list[Box3D]]:
@@ -1438,18 +1450,18 @@ class Stereo3DDetValidator(BaseValidator):
                 elif len(calibs) > 0 and isinstance(calibs[0], dict):
                     # Shared calibration (use first one)
                     calib = calibs[0]
-            
+
             # Get original shapes from batch
             ori_shapes = self._current_batch.get("ori_shape", [])
-        
+
         # Get imgsz from args
-        imgsz = getattr(self.args, 'imgsz', 384)
+        imgsz = getattr(self.args, "imgsz", 384)
 
         # T212, T028: Call decode_stereo3d_outputs once with entire batch
         # Get NMS config from args (defaults: use_nms=True, nms_kernel=3)
-        use_nms = getattr(self.args, 'use_nms', True)
-        nms_kernel = getattr(self.args, 'nms_kernel', 3)
-        
+        use_nms = getattr(self.args, "use_nms", True)
+        nms_kernel = getattr(self.args, "nms_kernel", 3)
+
         if mode == "heatmap":
             results = decode_stereo3d_outputs(
                 preds,
@@ -1471,36 +1483,34 @@ class Stereo3DDetValidator(BaseValidator):
                 ori_shapes=ori_shapes,
                 iou_thres=getattr(self.args, "iou", 0.45),
             )
-        
+
         # T212: Ensure results is list of lists
         # decode_stereo3d_outputs returns list[list[Box3D]] for batch_size > 1
         # or list[Box3D] for batch_size == 1 (backward compatibility)
         if batch_size == 1 and isinstance(results, list) and len(results) > 0 and isinstance(results[0], Box3D):
             # Single sample result - wrap in list for consistency
             results = [results]
-        
+
         # T023: Apply dense alignment for depth refinement (GAP-002)
         # Only apply if enabled in config and we have access to images
-        use_dense_alignment = getattr(self.args, 'use_dense_alignment', None)
+        use_dense_alignment = getattr(self.args, "use_dense_alignment", None)
         dense_config = get_dense_alignment_config()
-        
+
         # Check if dense alignment should be applied
-        should_apply_dense = (
-            use_dense_alignment is True or 
-            (use_dense_alignment is None and dense_config.get("enabled", True))
+        should_apply_dense = use_dense_alignment is True or (
+            use_dense_alignment is None and dense_config.get("enabled", True)
         )
-        
+
         if should_apply_dense and hasattr(self, "_current_batch") and self._current_batch:
             results = self._apply_dense_alignment(results, calibs, batch_size)
-        
+
         return results
 
 
 def _decode_orientation_multibin(alpha_bins: torch.Tensor) -> float:
     """Decode Multi-Bin orientation encoding to alpha (observation angle) in radians.
 
-    alpha_bins: Tensor [8] with layout:
-      [conf0, conf1, sin0, cos0, sin1, cos1, pad, pad]
+    alpha_bins: Tensor [8] with layout: [conf0, conf1, sin0, cos0, sin1, cos1, pad, pad]
     """
     conf0 = float(alpha_bins[0].item())
     conf1 = float(alpha_bins[1].item())
@@ -1528,8 +1538,8 @@ def decode_stereo3d_outputs_yolo11_p3(
 ) -> list[Box3D] | list[list[Box3D]]:
     """Decode YOLO11-mapped stereo3ddet outputs (P3-only) to Box3D objects.
 
-    This uses Detect inference output for candidate 2D boxes and class scores, then samples the auxiliary
-    stereo/3D maps at the kept P3 indices to estimate depth/dimensions/orientation.
+    This uses Detect inference output for candidate 2D boxes and class scores, then samples the auxiliary stereo/3D maps
+    at the kept P3 indices to estimate depth/dimensions/orientation.
     """
     if "det" not in outputs:
         raise KeyError("decode_stereo3d_outputs_yolo11_p3 expected outputs['det']")
@@ -1704,24 +1714,24 @@ def decode_stereo3d_outputs_yolo11_p3(
         batch_size: int,
     ) -> list[list[Box3D]]:
         """Apply dense photometric alignment to refine depth estimates.
-        
+
         T023: Integrate dense alignment into decode pipeline after geometric construction.
         T025: Performance profiling to ensure ≥20 FPS (SC-004/SC-005).
-        
+
         This method refines the depth estimates of detected 3D boxes using photometric
         matching between left and right stereo images.
-        
+
         Performance Notes (T025):
             - Typical runtime: ~1-3ms per object (CPU)
             - With 20 objects at 30 FPS: budget ~1.5ms/object → OK
             - Skip occluded objects to reduce overhead
             - Consider reducing depth_steps if too slow
-        
+
         Args:
             results: List of Box3D lists (one per batch item).
             calibs: List of calibration dictionaries.
             batch_size: Number of images in batch.
-        
+
         Returns:
             Results with refined depth values.
         """
@@ -1731,33 +1741,33 @@ def decode_stereo3d_outputs_yolo11_p3(
             aligner = get_dense_aligner()
             if aligner is None:
                 return results
-            
+
             # Get images from batch
             imgs = self._current_batch.get("img", None)
             if imgs is None:
                 return results
-            
+
             # Images are [B, 6, H, W] tensor - split into left [B, 3, H, W] and right [B, 3, H, W]
             # Channels: [0:3] = left RGB, [3:6] = right RGB
             # Convert to numpy HWC format for dense alignment
             try:
                 # Move to CPU and convert to numpy
                 imgs_np = imgs.cpu().numpy()  # [B, 6, H, W]
-                
+
                 # Get occlusion config for skipping heavily occluded objects
                 occlusion_config = get_dense_alignment_config()
                 skip_occluded = occlusion_config.get("skip_dense_for_occluded", True)
-                
+
                 for b in range(min(batch_size, len(results))):
                     boxes = results[b]
                     if not boxes:
                         continue
-                    
+
                     # Extract left and right images for this batch item
                     # Note: images are normalized [0, 1] - convert back to [0, 255] for patch matching
                     left_img = (imgs_np[b, :3].transpose(1, 2, 0) * 255).astype(np.uint8)  # [H, W, 3] RGB
                     right_img = (imgs_np[b, 3:].transpose(1, 2, 0) * 255).astype(np.uint8)  # [H, W, 3] RGB
-                    
+
                     # Get calibration for this sample
                     if calibs and b < len(calibs):
                         sample_calib = calibs[b] if isinstance(calibs[b], dict) else calibs[0]
@@ -1765,7 +1775,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                         sample_calib = calibs[0] if isinstance(calibs[0], dict) else {}
                     else:
                         sample_calib = {}
-                    
+
                     # Optionally classify occlusion to skip heavily occluded objects
                     occluded_indices = []
                     if skip_occluded and len(boxes) > 1:
@@ -1782,7 +1792,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                         except Exception as e:
                             LOGGER.debug(f"Occlusion classification failed: {e}")
                             occluded_indices = []
-                    
+
                     # Refine depth for each box
                     refined_boxes = []
                     for i, box in enumerate(boxes):
@@ -1790,14 +1800,14 @@ def decode_stereo3d_outputs_yolo11_p3(
                         if skip_occluded and should_skip_dense_alignment(i, occluded_indices):
                             refined_boxes.append(box)
                             continue
-                        
+
                         # Create box dict for dense alignment
                         box3d_dict = {
                             "center_3d": box.center_3d,
                             "dimensions": box.dimensions,
                             "orientation": box.orientation,
                         }
-                        
+
                         try:
                             # Refine depth using photometric alignment
                             refined_depth = aligner.refine_depth(
@@ -1806,7 +1816,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                                 box3d_init=box3d_dict,
                                 calib=sample_calib,
                             )
-                            
+
                             # Create new Box3D with refined depth
                             # Update x_3d proportionally with depth change
                             x, y, z = box.center_3d
@@ -1817,7 +1827,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                                 y_refined = y * depth_ratio
                             else:
                                 x_refined, y_refined = x, y
-                            
+
                             refined_box = Box3D(
                                 center_3d=(float(x_refined), float(y_refined), float(refined_depth)),
                                 dimensions=box.dimensions,
@@ -1833,13 +1843,13 @@ def decode_stereo3d_outputs_yolo11_p3(
                         except Exception as e:
                             LOGGER.debug(f"Dense alignment failed for box {i}: {e}")
                             refined_boxes.append(box)  # Keep original on failure
-                    
+
                     results[b] = refined_boxes
-                    
+
             except Exception as e:
                 LOGGER.debug(f"Dense alignment batch processing failed: {e}")
                 # Return original results on failure
-            
+
             return results
 
     def init_metrics(self, model: torch.nn.Module) -> None:
@@ -1850,7 +1860,7 @@ def decode_stereo3d_outputs_yolo11_p3(
         """
         # T016: Reset geometric solver statistics at start of validation
         reset_geometric_solver()
-        
+
         # Get class names from dataset, not from metrics results_dict (which contains metric keys, not class names)
         # This fixes the bug where self.nc was set to number of metric keys (6-7) instead of number of classes (3)
         if hasattr(self, "data") and self.data and "names" in self.data:
@@ -1860,9 +1870,16 @@ def decode_stereo3d_outputs_yolo11_p3(
         else:
             # Fallback to paper class names
             from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
+
             self.names = get_paper_class_names()
-        
-        self.nc = len(self.names) if isinstance(self.names, dict) else len(self.names) if isinstance(self.names, (list, tuple)) else 0
+
+        self.nc = (
+            len(self.names)
+            if isinstance(self.names, dict)
+            else len(self.names)
+            if isinstance(self.names, (list, tuple))
+            else 0
+        )
         self.seen = 0
         self.metrics.names = self.names
         self.metrics.nc = self.nc  # Also update metrics.nc to match the correct number of classes
@@ -1953,7 +1970,9 @@ def decode_stereo3d_outputs_yolo11_p3(
         """
         try:
             LOGGER.info(f"[DIAG] Sample {sample_idx}: Statistics Extraction")
-            LOGGER.info(f"  conf: shape={conf.shape}, dtype={conf.dtype}, range=[{float(np.min(conf)) if len(conf) > 0 else 0.0:.4f}, {float(np.max(conf)) if len(conf) > 0 else 0.0:.4f}], non-zero={np.count_nonzero(conf)}")
+            LOGGER.info(
+                f"  conf: shape={conf.shape}, dtype={conf.dtype}, range=[{float(np.min(conf)) if len(conf) > 0 else 0.0:.4f}, {float(np.max(conf)) if len(conf) > 0 else 0.0:.4f}], non-zero={np.count_nonzero(conf)}"
+            )
             unique_pred_cls = np.unique(pred_cls).tolist() if len(pred_cls) > 0 else []
             LOGGER.info(f"  pred_cls: shape={pred_cls.shape}, dtype={pred_cls.dtype}, unique={unique_pred_cls}")
             unique_target_cls = np.unique(target_cls).tolist() if len(target_cls) > 0 else []
@@ -1987,13 +2006,11 @@ def decode_stereo3d_outputs_yolo11_p3(
                     ori_shape = ori_shapes[si]
                     if isinstance(ori_shape, (list, tuple)) and len(ori_shape) >= 2:
                         actual_h, actual_w = ori_shape[0], ori_shape[1]
-                        imgsz = getattr(self.args, 'imgsz', 384)
-                        
+                        imgsz = getattr(self.args, "imgsz", 384)
+
                         # Compute letterbox parameters
-                        letterbox_scale, pad_left, pad_top = _compute_letterbox_params(
-                            actual_h, actual_w, imgsz
-                        )
-                        
+                        letterbox_scale, pad_left, pad_top = _compute_letterbox_params(actual_h, actual_w, imgsz)
+
                         # Reverse letterbox transformation on calibration
                         if isinstance(calib, dict):
                             calib_orig = calib.copy()
@@ -2005,6 +2022,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                             calib_orig["image_height"] = actual_h
                         else:
                             from ultralytics.data.stereo.calib import CalibrationParameters
+
                             if isinstance(calib, CalibrationParameters):
                                 calib_orig = {
                                     "fx": calib.fx / letterbox_scale,
@@ -2094,8 +2112,16 @@ def decode_stereo3d_outputs_yolo11_p3(
                     else:
                         pred_boxes_t = torch.tensor(pred_bboxes2d, dtype=torch.float32)
                         pred_cls_t = torch.tensor(pred_cls2d, dtype=torch.int64)
-                        gt_boxes_t = torch.tensor(gt_bboxes2d, dtype=torch.float32) if gt_bboxes2d else torch.zeros((0, 4), dtype=torch.float32)
-                        gt_cls_t = torch.tensor(gt_cls2d, dtype=torch.int64) if gt_cls2d else torch.zeros((0,), dtype=torch.int64)
+                        gt_boxes_t = (
+                            torch.tensor(gt_bboxes2d, dtype=torch.float32)
+                            if gt_bboxes2d
+                            else torch.zeros((0, 4), dtype=torch.float32)
+                        )
+                        gt_cls_t = (
+                            torch.tensor(gt_cls2d, dtype=torch.int64)
+                            if gt_cls2d
+                            else torch.zeros((0,), dtype=torch.int64)
+                        )
 
                         if gt_boxes_t.shape[0] == 0:
                             tp2d = np.zeros((n_pred, self.det_iouv.numel()), dtype=bool)
@@ -2182,7 +2208,11 @@ def decode_stereo3d_outputs_yolo11_p3(
                 else:
                     # No matches possible
                     tp = np.zeros((len(pred_boxes), self.niou), dtype=bool)
-                    fp = np.ones((len(pred_boxes), self.niou), dtype=bool) if len(pred_boxes) > 0 else np.zeros((0, self.niou), dtype=bool)
+                    fp = (
+                        np.ones((len(pred_boxes), self.niou), dtype=bool)
+                        if len(pred_boxes) > 0
+                        else np.zeros((0, self.niou), dtype=bool)
+                    )
 
                 # Extract statistics
                 conf = np.array([box.confidence for box in pred_boxes]) if pred_boxes else np.array([])
@@ -2195,31 +2225,33 @@ def decode_stereo3d_outputs_yolo11_p3(
 
                 # Update metrics
                 self.metrics.update_stats(
-                {
-                    "tp": tp,
-                    "fp": fp,
-                    "conf": conf,
-                    "pred_cls": pred_cls,
-                    "target_cls": target_cls,
-                    "boxes3d_pred": pred_boxes,
-                    "boxes3d_target": gt_boxes,
-                }
-            )
+                    {
+                        "tp": tp,
+                        "fp": fp,
+                        "conf": conf,
+                        "pred_cls": pred_cls,
+                        "target_cls": target_cls,
+                        "boxes3d_pred": pred_boxes,
+                        "boxes3d_target": gt_boxes,
+                    }
+                )
 
                 # DIAGNOSTIC START
                 # self.metrics._diagnostic_log_statistics_accumulation(self.metrics.stats, self.batch_i if hasattr(self, 'batch_i') else 0)
                 # DIAGNOSTIC END
-            
+
                 # Update progress bar with intermediate metrics (every batch for real-time feedback)
-            if hasattr(self, '_progress_bar') and self._progress_bar is not None and RANK in {-1, 0}:
+            if hasattr(self, "_progress_bar") and self._progress_bar is not None and RANK in {-1, 0}:
                 # Update progress bar periodically to avoid performance impact
-                if hasattr(self, '_batch_count'):
+                if hasattr(self, "_batch_count"):
                     self._batch_count += 1
                 else:
                     self._batch_count = 1
-                
+
                 # Update every 5 batches or if we're near the end (more frequent than before)
-                if self._batch_count % 5 == 0 or (hasattr(self, '_total_batches') and self._batch_count >= self._total_batches - 1):
+                if self._batch_count % 5 == 0 or (
+                    hasattr(self, "_total_batches") and self._batch_count >= self._total_batches - 1
+                ):
                     try:
                         metrics_str = self._format_progress_metrics()
                         if metrics_str:
@@ -2242,7 +2274,7 @@ def decode_stereo3d_outputs_yolo11_p3(
 
     def get_desc(self) -> str:
         """Return a formatted string summarizing validation metrics header for progress bar.
-        
+
         Returns:
             Formatted header string matching the progress bar format.
         """
@@ -2283,7 +2315,7 @@ def decode_stereo3d_outputs_yolo11_p3(
         batch_idx: int,
     ) -> None:
         """Generate and save validation visualization images with 3D bounding boxes in up-down layout.
-        
+
         Creates simple up-down layout: predictions on top, ground truth on bottom.
         Uses original image sizes (not resized/letterboxed).
 
@@ -2349,13 +2381,11 @@ def decode_stereo3d_outputs_yolo11_p3(
                 # Get actual image dimensions and compute letterbox parameters
                 # Calibration in batch is for letterboxed images, but we're visualizing original images
                 actual_h, actual_w = left_img.shape[:2]
-                imgsz = getattr(self.args, 'imgsz', 384)
-                
+                imgsz = getattr(self.args, "imgsz", 384)
+
                 # Compute letterbox parameters
-                letterbox_scale, pad_left, pad_top = _compute_letterbox_params(
-                    actual_h, actual_w, imgsz
-                )
-                
+                letterbox_scale, pad_left, pad_top = _compute_letterbox_params(actual_h, actual_w, imgsz)
+
                 # Reverse letterbox transformation on calibration to get original calibration
                 # Original: fx_orig = fx_letterbox / scale, cx_orig = (cx_letterbox - pad_left) / scale
                 if isinstance(calib, dict):
@@ -2370,6 +2400,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                 else:
                     # For CalibrationParameters object, create a dict with reversed transformation
                     from ultralytics.data.stereo.calib import CalibrationParameters
+
                     if isinstance(calib, CalibrationParameters):
                         calib_orig = {
                             "fx": calib.fx / letterbox_scale,
@@ -2396,16 +2427,17 @@ def decode_stereo3d_outputs_yolo11_p3(
                 if pred_boxes:
                     conf_threshold = self.args.conf
                     if conf_threshold < 0.1:
-                        LOGGER.warning(f"The prediction conf threshold is less than 0.1, you can set the conf through CLI.")
+                        LOGGER.warning(
+                            "The prediction conf threshold is less than 0.1, you can set the conf through CLI."
+                        )
                     pred_boxes = [
-                        box for box in pred_boxes 
-                        if hasattr(box, 'confidence') and box.confidence > conf_threshold
+                        box for box in pred_boxes if hasattr(box, "confidence") and box.confidence > conf_threshold
                     ]
 
                 # Generate visualization with predictions only (top image)
                 # Use original calibration (not letterboxed) since images are original size
                 try:
-                    left_pred, right_pred, combined_pred = plot_stereo3d_boxes(
+                    _left_pred, _right_pred, combined_pred = plot_stereo3d_boxes(
                         left_img=left_img.copy(),
                         right_img=right_img.copy(),
                         pred_boxes3d=pred_boxes,
@@ -2422,7 +2454,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                 # Generate visualization with ground truth only (bottom image)
                 # Use original calibration (not letterboxed) since images are original size
                 try:
-                    left_gt, right_gt, combined_gt = plot_stereo3d_boxes(
+                    _left_gt, _right_gt, combined_gt = plot_stereo3d_boxes(
                         left_img=left_img.copy(),
                         right_img=right_img.copy(),
                         pred_boxes3d=[],  # No predictions for ground truth visualization
@@ -2440,7 +2472,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                 # Use left image only for simplicity (or combine left+right horizontally first)
                 h_pred, w_pred = combined_pred.shape[:2]
                 h_gt, w_gt = combined_gt.shape[:2]
-                
+
                 # Ensure both images have the same width
                 if w_pred != w_gt:
                     target_w = max(w_pred, w_gt)
@@ -2448,15 +2480,17 @@ def decode_stereo3d_outputs_yolo11_p3(
                         combined_pred = cv2.resize(combined_pred, (target_w, h_pred), interpolation=cv2.INTER_LINEAR)
                     if w_gt < target_w:
                         combined_gt = cv2.resize(combined_gt, (target_w, h_gt), interpolation=cv2.INTER_LINEAR)
-                
+
                 # Stack vertically
                 stacked = np.vstack([combined_pred, combined_gt])
-                
+
                 # Add labels
                 label_height = 30
-                stacked_with_labels = np.zeros((stacked.shape[0] + label_height * 2, stacked.shape[1], 3), dtype=np.uint8)
-                stacked_with_labels[label_height:label_height + stacked.shape[0], :, :] = stacked
-                
+                stacked_with_labels = np.zeros(
+                    (stacked.shape[0] + label_height * 2, stacked.shape[1], 3), dtype=np.uint8
+                )
+                stacked_with_labels[label_height : label_height + stacked.shape[0], :, :] = stacked
+
                 # Add text labels
                 cv2.putText(
                     stacked_with_labels,
@@ -2494,18 +2528,26 @@ def decode_stereo3d_outputs_yolo11_p3(
             return
 
         # Count ground truth objects per class
-        all_target_cls = np.concatenate([s["target_cls"] for s in self.metrics.stats if len(s["target_cls"]) > 0], axis=0) if self.metrics.stats else np.array([], dtype=int)
+        all_target_cls = (
+            np.concatenate([s["target_cls"] for s in self.metrics.stats if len(s["target_cls"]) > 0], axis=0)
+            if self.metrics.stats
+            else np.array([], dtype=int)
+        )
         if len(all_target_cls) == 0:
             LOGGER.warning(f"no labels found in {self.args.task} set, can not compute metrics without labels")
             return
 
-        nt_per_class = np.bincount(all_target_cls.astype(int), minlength=self.metrics.nc) if len(all_target_cls) > 0 else np.zeros(self.metrics.nc, dtype=int)
-        total_gt = int(nt_per_class.sum())
+        nt_per_class = (
+            np.bincount(all_target_cls.astype(int), minlength=self.metrics.nc)
+            if len(all_target_cls) > 0
+            else np.zeros(self.metrics.nc, dtype=int)
+        )
+        int(nt_per_class.sum())
 
         # Get mean metrics
         maps3d_50 = self.metrics.maps3d_50
         maps3d_70 = self.metrics.maps3d_70
-        
+
         # Get precision and recall (flatten nested dicts to get mean values)
         precision_mean = 0.0
         recall_mean = 0.0
@@ -2515,7 +2557,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                 if isinstance(iou_dict, dict):
                     all_precisions.extend([v for v in iou_dict.values() if isinstance(v, (int, float))])
             precision_mean = float(np.mean(all_precisions)) if all_precisions else 0.0
-        
+
         if isinstance(self.metrics.recall, dict) and self.metrics.recall:
             all_recalls = []
             for iou_dict in self.metrics.recall.values():
@@ -2545,7 +2587,7 @@ def decode_stereo3d_outputs_yolo11_p3(
             for class_id, class_name in self.metrics.names.items():
                 ap3d_50_class = self.metrics.ap3d_50.get(class_name, 0.0)
                 ap3d_70_class = self.metrics.ap3d_70.get(class_name, 0.0)
-                
+
                 # Get class-specific precision and recall (average across IoU thresholds)
                 prec_class = 0.0
                 recall_class = 0.0
@@ -2555,14 +2597,14 @@ def decode_stereo3d_outputs_yolo11_p3(
                         if isinstance(iou_dict, dict) and class_id in iou_dict:
                             prec_values.append(iou_dict[class_id])
                     prec_class = float(np.mean(prec_values)) if prec_values else 0.0
-                
+
                 if isinstance(self.metrics.recall, dict):
                     recall_values = []
                     for iou_dict in self.metrics.recall.values():
                         if isinstance(iou_dict, dict) and class_id in iou_dict:
                             recall_values.append(iou_dict[class_id])
                     recall_class = float(np.mean(recall_values)) if recall_values else 0.0
-                
+
                 nt_class = int(nt_per_class[class_id]) if class_id < len(nt_per_class) else 0
                 # Use same format as main summary (without labels column to match progress bar)
                 LOGGER.info(
@@ -2579,13 +2621,13 @@ def decode_stereo3d_outputs_yolo11_p3(
 
     def _format_progress_metrics(self) -> str:
         """Format current metrics for progress bar display.
-        
+
         Returns:
             Formatted string with key metrics in training-style format.
         """
-        if not hasattr(self.metrics, 'stats') or len(self.metrics.stats) == 0:
+        if not hasattr(self.metrics, "stats") or len(self.metrics.stats) == 0:
             return ("%11i" + "%11s" * 6) % (int(self.seen), "-", "-", "-", "-", "-", "-")
-        
+
         # Compute intermediate metrics on accumulated stats
         try:
             # Save current stats
@@ -2593,38 +2635,40 @@ def decode_stereo3d_outputs_yolo11_p3(
             # Process to get metrics
             temp_results = self.metrics.process(save_dir=self.save_dir, plot=False)
             # Also compute bbox metrics if available
-            det_temp = self.det_metrics.process(save_dir=self.save_dir, plot=False) if hasattr(self, "det_metrics") else {}
+            det_temp = (
+                self.det_metrics.process(save_dir=self.save_dir, plot=False) if hasattr(self, "det_metrics") else {}
+            )
             # Restore stats for final processing
             self.metrics.stats = saved_stats
-            
+
             if not temp_results:
                 return ("%11i" + "%11s" * 6) % (int(self.seen), "-", "-", "-", "-", "-", "-")
-            
+
             # Get AP3D metrics (use mean values)
-            ap50 = temp_results.get('maps3d_50', 0.0)
+            ap50 = temp_results.get("maps3d_50", 0.0)
             if isinstance(ap50, dict):
                 ap50 = float(np.mean([v for v in ap50.values() if isinstance(v, (int, float))])) if ap50 else 0.0
-            ap70 = temp_results.get('maps3d_70', 0.0)
+            ap70 = temp_results.get("maps3d_70", 0.0)
             if isinstance(ap70, dict):
                 ap70 = float(np.mean([v for v in ap70.values() if isinstance(v, (int, float))])) if ap70 else 0.0
-            
+
             # Get precision and recall (flatten nested dicts)
-            precision = temp_results.get('precision', 0.0)
+            precision = temp_results.get("precision", 0.0)
             if isinstance(precision, dict):
                 all_precisions = []
                 for iou_dict in precision.values():
                     if isinstance(iou_dict, dict):
                         all_precisions.extend([v for v in iou_dict.values() if isinstance(v, (int, float))])
                 precision = float(np.mean(all_precisions)) if all_precisions else 0.0
-            
-            recall = temp_results.get('recall', 0.0)
+
+            recall = temp_results.get("recall", 0.0)
             if isinstance(recall, dict):
                 all_recalls = []
                 for iou_dict in recall.values():
                     if isinstance(iou_dict, dict):
                         all_recalls.extend([v for v in iou_dict.values() if isinstance(v, (int, float))])
                 recall = float(np.mean(all_recalls)) if all_recalls else 0.0
-            
+
             # Get bbox mAPs (DetMetrics uses 'metrics/mAP50(B)' keys)
             map50 = det_temp.get("metrics/mAP50(B)", 0.0) if isinstance(det_temp, dict) else 0.0
             map5095 = det_temp.get("metrics/mAP50-95(B)", 0.0) if isinstance(det_temp, dict) else 0.0
@@ -2645,9 +2689,9 @@ def decode_stereo3d_outputs_yolo11_p3(
             LOGGER.debug(f"Error formatting progress metrics: {e}")
             return ("%11i" + "%11s" * 6) % (int(self.seen), "-", "-", "-", "-", "-", "-")
 
-
-
-    def build_dataset(self, img_path: str | dict[str, Any], mode: str = "val", batch: int | None = None) -> torch.utils.data.Dataset:
+    def build_dataset(
+        self, img_path: str | dict[str, Any], mode: str = "val", batch: int | None = None
+    ) -> torch.utils.data.Dataset:
         """Build Stereo3DDetDataset for validation.
 
         Args:
@@ -2659,31 +2703,31 @@ def decode_stereo3d_outputs_yolo11_p3(
             Stereo3DDetDataset: Dataset instance for validation.
         """
         from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetDataset
-        # img_path should be a dir 
+
+        # img_path should be a dir
         if isinstance(img_path, str) and not os.path.isdir(img_path):
             # means it's a file instead of the path, return it's parent directory
             img_path = Path(img_path).parent
 
-
         # Handle descriptor dict from self.data.get(self.args.split)
         desc = img_path if isinstance(img_path, dict) else self.data.get(mode) if hasattr(self, "data") else None
-        
+
         if isinstance(desc, dict) and desc.get("type") == "kitti_stereo":
             # Get image size from args, default to 384
             imgsz = getattr(self.args, "imgsz", 384)
             if isinstance(imgsz, (list, tuple)):
                 imgsz = imgsz[0] if len(imgsz) > 0 else 384
-            
+
             # Get max_samples from args if available (for profiling/testing)
             max_samples = getattr(self.args, "max_samples", None)
-            
+
             # Compute output_size from imgsz with default stride (8x for P3)
             # This can be overridden if model is available later, but default works for most cases
             output_size = None  # Will use dataset default (imgsz // 8)
-            
+
             # Get mean_dims from dataset config if available
             mean_dims = self.data.get("mean_dims") if hasattr(self, "data") else None
-            
+
             return Stereo3DDetDataset(
                 root=str(desc.get("root", ".")),
                 split=str(desc.get("split", mode)),
@@ -2693,13 +2737,13 @@ def decode_stereo3d_outputs_yolo11_p3(
                 output_size=output_size,
                 mean_dims=mean_dims,
             )
-        
+
         # Fallback: if img_path is a string, try to use it directly
         if isinstance(img_path, str) or isinstance(img_path, Path):
             imgsz = getattr(self.args, "imgsz", 384)
             if isinstance(imgsz, (list, tuple)):
                 imgsz = imgsz[0] if len(imgsz) > 0 else 384
-            
+
             return Stereo3DDetDataset(
                 root=img_path,
                 split=mode,
@@ -2708,7 +2752,7 @@ def decode_stereo3d_outputs_yolo11_p3(
                 output_size=None,  # Will use dataset default
                 mean_dims=self.data.get("mean_dims") if hasattr(self, "data") else None,
             )
-        
+
         # If we can't determine the dataset, raise an error
         raise ValueError(
             f"Cannot build dataset from img_path={img_path} (type: {type(img_path)}). "
@@ -2728,7 +2772,7 @@ def decode_stereo3d_outputs_yolo11_p3(
         from ultralytics.data import build_dataloader
 
         dataset = self.build_dataset(dataset_path, batch=batch_size, mode="val")
-        
+
         # build_dataloader automatically uses dataset.collate_fn if available
         return build_dataloader(
             dataset,
@@ -2739,7 +2783,7 @@ def decode_stereo3d_outputs_yolo11_p3(
             drop_last=False,  # Don't drop last batch in validation
             pin_memory=self.device.type == "cuda" if hasattr(self, "device") else True,
         )
-    
+
     # def __call__(self, batch: dict[str, Any]) -> dict[str, Any]:
     #     """Validate a single batch of data."""
     #     # debug

@@ -1,16 +1,13 @@
 """
 YOLOv11 Stereo 3D Detection - Complete Implementation
-A stereo 3D detection network based on Stereo CenterNet
+A stereo 3D detection network based on Stereo CenterNet.
 """
 
 from __future__ import annotations
 
-from typing import Dict, Tuple, Optional, List
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 # ============================================================================
 # Helper: DLA-34 Backbone Wrapper
@@ -20,8 +17,8 @@ import torch.nn.functional as F
 class _DLA34Wrapper(nn.Module):
     """Wrapper for timm DLA-34 backbone to extract single feature map.
 
-    timm's features_only=True returns a list of feature maps from different stages.
-    This wrapper extracts only the final stage output (index 0 from out_indices=(5,)).
+    timm's features_only=True returns a list of feature maps from different stages. This wrapper extracts only the final
+    stage output (index 0 from out_indices=(5,)).
     """
 
     def __init__(self, backbone):
@@ -47,6 +44,7 @@ class _DLA34Wrapper(nn.Module):
 # Part 1: Feature Fusion Layer
 # ============================================================================
 
+
 class StereoFeatureFusion(nn.Module):
     """Stereo feature fusion module."""
 
@@ -62,9 +60,10 @@ class StereoFeatureFusion(nn.Module):
         """
         Args:
             left_feat: [B, C, H, W]
-            right_feat: [B, C, H, W]
+            right_feat: [B, C, H, W].
+
         Returns:
-            fused: [B, C_out, H, W]
+            fused: [B, C_out, H, W].
         """
         concat_feat = torch.cat([left_feat, right_feat], dim=1)
         fused = self.fusion_conv(concat_feat)
@@ -74,6 +73,7 @@ class StereoFeatureFusion(nn.Module):
 # ============================================================================
 # Part 2: Neck (FPN-style Feature Pyramid)
 # ============================================================================
+
 
 class StereoPAN(nn.Module):
     """Stereo Path Aggregation Network (PAN)."""
@@ -115,12 +115,13 @@ class StereoPAN(nn.Module):
             ]
         )
 
-    def forward(self, features: List[torch.Tensor]) -> List[torch.Tensor]:
+    def forward(self, features: list[torch.Tensor]) -> list[torch.Tensor]:
         """
         Args:
             features: [P3, P4, P5] multi-scale features from backbone
+
         Returns:
-            [P3_out, P4_out, P5_out]
+            [P3_out, P4_out, P5_out].
         """
         # Simplified: only handle P3 (primary detection layer).
         # In practice, handle multiple levels.
@@ -131,6 +132,7 @@ class StereoPAN(nn.Module):
 # Part 3: Detection Head (10 branches)
 # ============================================================================
 
+
 class StereoCenterNetHead(nn.Module):
     """Stereo CenterNet detection head with 10 parallel branches."""
 
@@ -138,17 +140,17 @@ class StereoCenterNetHead(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
-        
+
         # Attributes required for compatibility with v8DetectionLoss (used by DetectionModel.init_criterion)
         # These are expected by the standard YOLO loss function even though stereo uses custom loss
         self.nc = num_classes  # Alias for num_classes (expected by v8DetectionLoss)
         self.reg_max = 1  # Regression max (not used by stereo, but required by v8DetectionLoss)
         self.no = self.nc + self.reg_max * 4  # Number of outputs per anchor (for compatibility)
-        
+
         # Stride attribute required for compatibility (v8DetectionLoss expects model.model[-1].stride)
         # Note: This is a default value. The actual stride depends on the model architecture:
         # - P3 output: 8x downsampling (stride = 8.0)
-        # - P4 output: 16x downsampling (stride = 16.0)  
+        # - P4 output: 16x downsampling (stride = 16.0)
         # - P5 output: 32x downsampling (stride = 32.0)
         # DetectionModel will compute this dynamically via forward pass if the head is a Detect subclass.
         # For stereo3ddet, we use StereoCenterNetLoss which doesn't rely on this stride value.
@@ -174,16 +176,16 @@ class StereoCenterNetHead(nn.Module):
                 "vertex_dist": self._build_branch(in_channels, 4),
             }
         )
-        
+
         # Initialize heatmap branch bias for focal loss (bias=-2.19 gives sigmoid(-2.19) ≈ 0.1)
         self._init_heatmap_bias()
-    
+
     def _init_heatmap_bias(self):
         """Initialize heatmap branch bias to -2.19 for focal loss prior."""
         heatmap_branch = self.branches["heatmap"]
         # Get the final conv layer (1x1 conv)
         final_conv = heatmap_branch[-1]
-        if hasattr(final_conv, 'bias') and final_conv.bias is not None:
+        if hasattr(final_conv, "bias") and final_conv.bias is not None:
             nn.init.constant_(final_conv.bias, -2.19)
 
     def _build_shared_head(self, in_channels: int) -> nn.Sequential:
@@ -206,12 +208,13 @@ class StereoCenterNetHead(nn.Module):
             nn.Conv2d(256, out_channels, 1, 1, 0),
         )
 
-    def forward(self, x: list[torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def forward(self, x: list[torch.Tensor]) -> dict[str, torch.Tensor]:
         """
         Args:
             x: [B, C, H, W] fused features from the neck
+
         Returns:
-            Dict of 10 branch outputs
+            Dict of 10 branch outputs.
         """
         # Shared feature extraction
         shared_feat = self.shared_head(x[0])  # [B, 256, H, W]
@@ -228,10 +231,11 @@ class StereoCenterNetHead(nn.Module):
 # Part 4: Loss Functions
 # ============================================================================
 
+
 class StereoCenterNetLoss(nn.Module):
     """Total loss for Stereo CenterNet."""
 
-    def __init__(self, num_classes: int = 3, loss_weights: Optional[Dict[str, float]] = None):
+    def __init__(self, num_classes: int = 3, loss_weights: dict[str, float] | None = None):
         super().__init__()
         self.num_classes = num_classes
 
@@ -248,20 +252,20 @@ class StereoCenterNetLoss(nn.Module):
             "vertex_offset": 1.0,
             "vertex_dist": 0.1,  # Lower weight to match YAML config and reduce impact of large distances
         }
-        
+
         # Use provided loss_weights, falling back to defaults for missing keys
         if loss_weights is not None:
             self.loss_weights = {key: loss_weights.get(key, default_weights[key]) for key in default_weights.keys()}
         else:
             self.loss_weights = default_weights.copy()
 
-    def forward(self, predictions: Dict, targets: Dict) -> Tuple[torch.Tensor, Dict]:
-        """
-        Compute the loss for each branch.
+    def forward(self, predictions: dict, targets: dict) -> tuple[torch.Tensor, dict]:
+        """Compute the loss for each branch.
 
         Args:
             predictions: Dict of network outputs
             targets: Dict of ground truth targets
+
         Returns:
             (total_loss, loss_dict)
         """
@@ -305,44 +309,47 @@ class StereoCenterNetLoss(nn.Module):
         )
 
         # 8. Vertex coordinates (L1)
-        
+
         vertex_loss_raw = self.masked_l1_loss(
             predictions["vertices"], targets["vertices"], mask=targets.get("heatmap", None), branch_name="vertices"
         )
         losses["vertices"] = vertex_loss_raw
-        
+
         # 9. Vertex sub-pixel offset (L1)
         losses["vertex_offset"] = self.masked_l1_loss(
             predictions["vertex_offset"], targets["vertex_offset"], mask=targets.get("heatmap", None)
         )
 
         # 10. Vertex distance (L1)
-        
+
         vertex_dist_loss_raw = self.masked_l1_loss(
-            predictions["vertex_dist"], targets["vertex_dist"], mask=targets.get("heatmap", None), branch_name="vertex_dist"
+            predictions["vertex_dist"],
+            targets["vertex_dist"],
+            mask=targets.get("heatmap", None),
+            branch_name="vertex_dist",
         )
         losses["vertex_dist"] = vertex_dist_loss_raw
-        
+
         # Weighted sum
         total_loss = sum(self.loss_weights[k] * v for k, v in losses.items())
-        
+
         return total_loss, losses
-    
-    def centernet_focal_loss(self, pred: torch.Tensor, target: torch.Tensor, 
-                          alpha: float = 2.0, beta: float = 4.0) -> torch.Tensor:
-        """
-        CenterNet-style Focal Loss for heatmap regression.
-        
+
+    def centernet_focal_loss(
+        self, pred: torch.Tensor, target: torch.Tensor, alpha: float = 2.0, beta: float = 4.0
+    ) -> torch.Tensor:
+        """CenterNet-style Focal Loss for heatmap regression.
+
         Paper Equation 1:
         - For positive locations (Y=1): (1 - Ŷ)^α * log(Ŷ)
         - For negative locations (Y<1): (1 - Y)^β * Ŷ^α * log(1 - Ŷ)
-        
+
         Args:
             pred: [B, C, H, W] - raw network output (before sigmoid)
             target: [B, C, H, W] - Gaussian heatmap target [0, 1]
             alpha: focusing parameter (default 2)
             beta: down-weighting factor for negatives near centers (default 4)
-        
+
         Returns:
             Scalar loss value
         """
@@ -355,14 +362,14 @@ class StereoCenterNetLoss(nn.Module):
 
         eps = 1e-4  # fp32 epsilon for log safety
         pred = pred.clamp(min=eps, max=1.0 - eps)
-        
+
         # Identify positive locations (peak of Gaussian, Y = 1)
         pos_mask = target.eq(1).float()
         neg_mask = target.lt(1).float()
-        
+
         # Count number of positive samples for normalization
         num_pos = pos_mask.sum()
-        
+
         # Handle empty batches gracefully (images with no objects)
         # This can happen legitimately in KITTI when:
         # - Image has no annotated objects
@@ -371,25 +378,24 @@ class StereoCenterNetLoss(nn.Module):
         if num_pos == 0:
             # Return 0 with a valid grad path
             return pred.sum() * 0.0
-        
+
         num_pos = torch.clamp(num_pos, min=1.0)  # Avoid division by zero
-        
+
         # Positive loss: (1 - Ŷ)^α * log(Ŷ)
         pos_loss = torch.pow(1 - pred, alpha) * torch.log(pred) * pos_mask
-        
+
         # Negative loss: (1 - Y)^β * Ŷ^α * log(1 - Ŷ)
         # The (1 - Y)^β term down-weights locations near object centers
         # log1p(-pred) is numerically more stable than log(1-pred) when pred ~ 1
         neg_loss = torch.pow(1 - target, beta) * torch.pow(pred, alpha) * torch.log1p(-pred) * neg_mask
-        
-        
+
         # Sum and normalize by number of positive samples
         loss = -(pos_loss.sum() + neg_loss.sum()) / num_pos
-        
+
         return loss
 
     def masked_l1_loss(
-        self, pred: torch.Tensor, target: torch.Tensor, mask: Optional[torch.Tensor] = None, branch_name: str = ""
+        self, pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None = None, branch_name: str = ""
     ) -> torch.Tensor:
         """Smooth L1 loss with optional mask."""
         loss = F.smooth_l1_loss(pred, target, reduction="none")
@@ -423,7 +429,7 @@ class StereoCenterNetLoss(nn.Module):
         return loss
 
     def right_width_loss(
-        self, pred: torch.Tensor, target: torch.Tensor, mask: Optional[torch.Tensor] = None
+        self, pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         """Special loss for right-box width (with sigmoid transform)."""
         # Apply sigmoid transform: wr = 1/σ(ŵr) - 1
@@ -449,10 +455,9 @@ class StereoCenterNetLoss(nn.Module):
         return loss
 
     def orientation_loss(
-        self, pred: torch.Tensor, target: torch.Tensor, mask: Optional[torch.Tensor] = None
+        self, pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """
-        Orientation angle loss (Multi-Bin encoding).
+        """Orientation angle loss (Multi-Bin encoding).
 
         pred: [B, 8, H, W]
             layout: [bin_logit_0, bin_logit_1, sin_0, cos_0, sin_1, cos_1, pad, pad]
@@ -486,24 +491,24 @@ class StereoCenterNetLoss(nn.Module):
         # angle_pred: [B, 4, H, W] contains [sin1, cos1, sin2, cos2]
         # Bin 0: sin at index 0, cos at index 1
         # Bin 1: sin at index 2, cos at index 3
-        
+
         # Create indices to gather sin/cos for active bin
         # For each (b, h, w), get sin/cos indices: bin0 -> [0, 1], bin1 -> [2, 3]
         sin_indices = bin_target * 2  # [B, H, W] - 0 for bin0, 2 for bin1
         cos_indices = bin_target * 2 + 1  # [B, H, W] - 1 for bin0, 3 for bin1
-        
+
         # Gather sin/cos predictions for active bin using torch.gather
         # angle_pred: [B, 4, H, W], indices: [B, H, W] -> need [B, 1, H, W] for gather
         sin_indices_expanded = sin_indices.unsqueeze(1)  # [B, 1, H, W]
         cos_indices_expanded = cos_indices.unsqueeze(1)  # [B, 1, H, W]
-        
+
         sin_pred_active = torch.gather(angle_pred, dim=1, index=sin_indices_expanded).squeeze(1)  # [B, H, W]
         cos_pred_active = torch.gather(angle_pred, dim=1, index=cos_indices_expanded).squeeze(1)  # [B, H, W]
-        
+
         # Gather sin/cos targets for active bin
         sin_target_active = torch.gather(angle_target, dim=1, index=sin_indices_expanded).squeeze(1)  # [B, H, W]
         cos_target_active = torch.gather(angle_target, dim=1, index=cos_indices_expanded).squeeze(1)  # [B, H, W]
-        
+
         # Compute L1 loss on active bin's sin/cos residual
         sin_loss = F.l1_loss(sin_pred_active, sin_target_active, reduction="none")
         cos_loss = F.l1_loss(cos_pred_active, cos_target_active, reduction="none")
@@ -535,13 +540,13 @@ class StereoCenterNetLoss(nn.Module):
 
 class UncertaintyWeightedLoss(nn.Module):
     """Uncertainty-weighted multi-task loss (Kendall et al., 2018).
-    
-    This module learns task-specific uncertainty parameters (log_vars) that automatically
-    balance the contribution of each loss component during training. Higher uncertainty
-    for a task means lower weight, allowing the model to focus on more reliable tasks.
-    
+
+    This module learns task-specific uncertainty parameters (log_vars) that automatically balance the contribution of
+    each loss component during training. Higher uncertainty for a task means lower weight, allowing the model to focus
+    on more reliable tasks.
+
     The learned weights can be logged during training to verify balance (T045).
-    
+
     Attributes:
         log_vars: Learnable log-variance parameters for each task.
         _last_breakdown: Cached breakdown of last forward pass for logging.
@@ -550,7 +555,7 @@ class UncertaintyWeightedLoss(nn.Module):
 
     def __init__(self, num_tasks: int = 10, log_interval: int = 100):
         """Initialize uncertainty-weighted loss module.
-        
+
         Args:
             num_tasks: Number of loss components to weight.
             log_interval: How often to log loss breakdown (every N forward calls).
@@ -559,18 +564,18 @@ class UncertaintyWeightedLoss(nn.Module):
         self.log_vars = nn.ParameterList([nn.Parameter(torch.zeros(1)) for _ in range(num_tasks)])
         self.log_interval = log_interval
         self._forward_count = 0
-        self._last_breakdown: Optional[Dict[str, Dict[str, float]]] = None
-        self._task_names: Optional[List[str]] = None
+        self._last_breakdown: dict[str, dict[str, float]] | None = None
+        self._task_names: list[str] | None = None
 
-    def forward(self, losses: Dict[str, torch.Tensor], verbose: bool = False) -> torch.Tensor:
+    def forward(self, losses: dict[str, torch.Tensor], verbose: bool = False) -> torch.Tensor:
         """Compute uncertainty-weighted total loss.
-        
+
         L_total = Σ_i (exp(-log_var_i) * L_i + log_var_i)
 
         Args:
             losses: Dict of individual task losses {task_name: loss_tensor}.
             verbose: If True, log loss breakdown immediately.
-            
+
         Returns:
             Total weighted loss scalar tensor.
         """
@@ -585,7 +590,7 @@ class UncertaintyWeightedLoss(nn.Module):
             precision = torch.exp(-log_var)
             weighted_loss = precision * loss_val + log_var
             total_loss = total_loss + weighted_loss
-            
+
             # Store breakdown for logging (T045)
             breakdown[task_name] = {
                 "raw_loss": loss_val.detach().item(),
@@ -593,32 +598,33 @@ class UncertaintyWeightedLoss(nn.Module):
                 "precision": precision.detach().item(),
                 "weighted_loss": weighted_loss.detach().item(),
             }
-        
+
         self._last_breakdown = breakdown
         self._forward_count += 1
-        
+
         # Periodic logging for training balance verification (T045)
         if verbose or (self.log_interval > 0 and self._forward_count % self.log_interval == 0):
             self._log_breakdown()
 
         return total_loss
-    
+
     def _log_breakdown(self) -> None:
         """Log the loss breakdown for balance verification (T045).
-        
+
         Logs individual loss components, learned uncertainty parameters,
         and effective weights to help verify that uncertainty weighting
         is properly balancing the multi-task losses.
         """
         if self._last_breakdown is None:
             return
-        
+
         try:
             from ultralytics.utils import LOGGER
         except ImportError:
             import logging
+
             LOGGER = logging.getLogger(__name__)
-        
+
         # Build log message
         msg_parts = ["[Uncertainty Loss Breakdown]"]
         for task_name, values in self._last_breakdown.items():
@@ -629,12 +635,12 @@ class UncertaintyWeightedLoss(nn.Module):
                 f"weight={values['precision']:.4f}, "
                 f"weighted={values['weighted_loss']:.4f}"
             )
-        
+
         LOGGER.info("\n".join(msg_parts))
-    
-    def get_loss_breakdown(self) -> Optional[Dict[str, Dict[str, float]]]:
+
+    def get_loss_breakdown(self) -> dict[str, dict[str, float]] | None:
         """Get the breakdown of the last computed loss.
-        
+
         Returns:
             Dict mapping task names to their loss breakdown:
                 - raw_loss: Original unweighted loss value
@@ -644,29 +650,27 @@ class UncertaintyWeightedLoss(nn.Module):
             Returns None if forward() hasn't been called yet.
         """
         return self._last_breakdown
-    
-    def get_learned_weights(self) -> Dict[str, float]:
+
+    def get_learned_weights(self) -> dict[str, float]:
         """Get the current learned weights for each task.
-        
+
         The effective weight for each task is exp(-log_var).
         Higher weight = model considers this task more reliable.
-        
+
         Returns:
             Dict mapping task names to their effective weights.
         """
         if self._task_names is None:
             # Use generic names if forward hasn't been called
             return {f"task_{i}": torch.exp(-lv).item() for i, lv in enumerate(self.log_vars)}
-        
-        return {
-            name: torch.exp(-self.log_vars[i]).item() 
-            for i, name in enumerate(self._task_names)
-        }
+
+        return {name: torch.exp(-self.log_vars[i]).item() for i, name in enumerate(self._task_names)}
 
 
 # ============================================================================
 # Part 5: Full Model
 # ============================================================================
+
 
 class StereoYOLOv11(nn.Module):
     """YOLOv11 Stereo 3D Detection - Full model."""
@@ -677,7 +681,7 @@ class StereoYOLOv11(nn.Module):
         num_classes: int = 3,
         in_channels: int = 256,
         use_uncertainty_weighting: bool = False,
-        loss_weights: Optional[Dict[str, float]] = None,
+        loss_weights: dict[str, float] | None = None,
     ):
         """Initialize StereoYOLOv11 model.
 
@@ -685,10 +689,10 @@ class StereoYOLOv11(nn.Module):
             backbone_type: Backbone architecture ('resnet18', 'resnet50', or 'dla34').
             num_classes: Number of object classes (default 3 for KITTI: Car, Pedestrian, Cyclist).
             in_channels: Number of channels for feature fusion output (default 256).
-            use_uncertainty_weighting: Whether to use learned uncertainty weighting for multi-task
-                loss balancing (Kendall et al., 2018). When True, the model learns task-specific
-                uncertainty parameters that automatically balance the contribution of each loss
-                component during training. Default False for backward compatibility.
+            use_uncertainty_weighting: Whether to use learned uncertainty weighting for multi-task loss balancing
+                (Kendall et al., 2018). When True, the model learns task-specific uncertainty parameters that
+                automatically balance the contribution of each loss component during training. Default False for
+                backward compatibility.
             loss_weights: Optional dict of loss weights for each branch. If None, uses default weights.
         """
         super().__init__()
@@ -716,35 +720,30 @@ class StereoYOLOv11(nn.Module):
 
     def _build_backbone(self, backbone_type: str) -> nn.Module:
         """Build the backbone network.
-        
+
         Args:
             backbone_type: Type of backbone to use. Supported options:
                 - "resnet18": ResNet-18 (512 channels, ~30+ FPS)
                 - "resnet50": ResNet-50 (2048 channels, ~25 FPS)
                 - "dla34": DLA-34 with Deep Layer Aggregation (512 channels, ~20+ FPS)
                           Requires timm library: pip install timm
-                          
+
         Returns:
             nn.Module: Backbone network that outputs feature maps [B, C, H/32, W/32]
-            
+
         Raises:
             ValueError: If backbone_type is not supported
             ImportError: If dla34 is requested but timm is not installed
-            
-        Note (GAP-005 / T033):
-            DLA-34 provides +8.73% AP3D improvement over ResNet-18 according to 
-            the Stereo CenterNet paper. The backbone is shared for weight sharing
-            between left and right image processing (see T034).
+            Note (GAP-005 / T033): DLA-34 provides +8.73% AP3D improvement over ResNet-18 according to the Stereo
+                CenterNet paper. The backbone is shared for weight sharing between left and right image processing
+                (see T034).
         """
         # Validate backbone type upfront (T033)
         valid_backbones = {"resnet18", "resnet50", "dla34"}
         if backbone_type not in valid_backbones:
             valid_options = ", ".join(sorted(valid_backbones))
-            raise ValueError(
-                f"Unknown backbone type: '{backbone_type}'. "
-                f"Valid options are: {valid_options}"
-            )
-        
+            raise ValueError(f"Unknown backbone type: '{backbone_type}'. Valid options are: {valid_options}")
+
         if backbone_type == "resnet18":
             from torchvision import models
 
@@ -778,20 +777,19 @@ class StereoYOLOv11(nn.Module):
             )
             # Wrap in a module that extracts just the final feature map
             return _DLA34Wrapper(backbone)
-        
+
         # Should never reach here due to upfront validation
         raise ValueError(f"Unhandled backbone type: {backbone_type}")
 
     def _get_backbone_channels(self, backbone_type: str) -> int:
         """Get the number of output channels of the backbone.
-        
+
         Args:
             backbone_type: Type of backbone ("resnet18", "resnet50", "dla34")
-            
+
         Returns:
             Number of output channels from the backbone's final feature map
-            
-        Channel reference (GAP-005 / T032):
+            Channel reference (GAP-005 / T032):
             - resnet18: 512 (final BasicBlock output)
             - resnet50: 2048 (final Bottleneck output)
             - dla34: 512 (final stage output from Deep Layer Aggregation)
@@ -803,33 +801,27 @@ class StereoYOLOv11(nn.Module):
         }
         if backbone_type not in channel_map:
             valid_options = ", ".join(sorted(channel_map.keys()))
-            raise ValueError(
-                f"Unknown backbone type: '{backbone_type}'. "
-                f"Valid options are: {valid_options}"
-            )
+            raise ValueError(f"Unknown backbone type: '{backbone_type}'. Valid options are: {valid_options}")
         return channel_map[backbone_type]
 
     def forward(
         self,
         left_img: torch.Tensor,
         right_img: torch.Tensor,
-        targets: Optional[Dict] = None,
-    ) -> Tuple[Dict, Optional[torch.Tensor]]:
-        """
-        Full forward pass.
+        targets: dict | None = None,
+    ) -> tuple[dict, torch.Tensor | None]:
+        """Full forward pass.
 
         Args:
             left_img: [B, 3, H, W] - Left camera image tensor
-            right_img: [B, 3, H, W] - Right camera image tensor  
+            right_img: [B, 3, H, W] - Right camera image tensor
             targets: Dict of ground truth (training)
 
         Returns:
             (predictions, loss) or predictions
-            
-        Note (T034 - Weight Sharing Verification):
-            The same backbone instance (self.backbone) is used to process both
-            left and right images. This ensures weight sharing between the two
-            branches, which is critical for stereo matching. Works correctly with
+            Note (T034 - Weight Sharing Verification): The same backbone instance (self.backbone) is used to process
+                both left and right images. This ensures weight sharing between the two branches, which is critical for
+                stereo matching. Works correctly with
             all supported backbones: ResNet-18, ResNet-50, and DLA-34.
         """
         # 1. Backbone feature extraction (weight sharing - T034)
@@ -881,8 +873,8 @@ class StereoYOLOv11Wrapper(nn.Module):
             backbone_type: Backbone architecture ('resnet18', 'resnet50', or 'dla34').
             num_classes: Number of object classes (default 3 for KITTI: Car, Pedestrian, Cyclist).
             in_channels: Number of channels for feature fusion output (default 256).
-            use_uncertainty_weighting: Whether to use learned uncertainty weighting for multi-task
-                loss balancing. See StereoYOLOv11 for details.
+            use_uncertainty_weighting: Whether to use learned uncertainty weighting for multi-task loss balancing. See
+                StereoYOLOv11 for details.
         """
         super().__init__()
         self.core = StereoYOLOv11(
@@ -903,7 +895,7 @@ class StereoYOLOv11Wrapper(nn.Module):
     def forward(
         self,
         x,
-        targets: Optional[Dict] = None,
+        targets: dict | None = None,
         augment: bool = False,
         visualize=False,
         embed=None,
@@ -911,7 +903,7 @@ class StereoYOLOv11Wrapper(nn.Module):
         **kwargs,
     ):
         """Accepts either a tensor [B,6,H,W] or a dict with keys 'img' and optional 'targets'.
-        
+
         Args:
             x: Input tensor [B,6,H,W] or dict with 'img' key.
             targets: Optional ground truth targets for training.
@@ -962,15 +954,15 @@ class StereoYOLOv11Wrapper(nn.Module):
 
     def loss(self, batch, preds=None):
         """Compute loss for validation.
-        
+
         This method is called by BaseValidator during validation to compute loss.
         It extracts labels from batch, converts them to targets format, computes
         predictions if needed, and returns (total_loss, loss_items) tuple.
-        
+
         Args:
             batch: Dict with 'img' (6-channel tensor [B, 6, H, W]) and 'labels' (list of label dicts per image).
             preds: Optional precomputed predictions dict with 10 branch outputs.
-            
+
         Returns:
             Tuple of (total_loss, loss_items) where:
                 - total_loss: Scalar tensor with total loss value
@@ -981,27 +973,26 @@ class StereoYOLOv11Wrapper(nn.Module):
         # Extract inputs from batch (T131)
         img = batch.get("img")
         labels_list = batch.get("labels", [])
-        
+
         if img is None:
             raise ValueError("batch must contain 'img' key with 6-channel tensor")
-        
+
         # Split img into left and right (T132)
         assert img.shape[1] == 6, "StereoYOLOv11Wrapper expects a 6-channel input (left+right)."
-        left = img[:, 0:3, :, :]
-        right = img[:, 3:6, :, :]
-        
+        img[:, 0:3, :, :]
+        img[:, 3:6, :, :]
+
         # Get image size for TargetGenerator
         _, _, h, w = img.shape
         input_size = (h, w)
-        
+
         # Import TargetGenerator and initialize it (T133)
-        from ultralytics.data.stereo.target import TargetGenerator
         from ultralytics.data.stereo.target_improved import TargetGenerator as TargetGeneratorImproved
-        
+
         # Initialize target generator if not already done
         if not hasattr(self, "_target_generator"):
             num_classes = len(self.names) if isinstance(self.names, dict) else 3
-            
+
             # Dynamically determine output size from model forward pass
             # This works for any architecture (P3, P54, P5, etc.) instead of hardcoding 32x
             # The model's actual output size depends on the YAML config (e.g., P3 = 8x downsampling)
@@ -1011,18 +1002,20 @@ class StereoYOLOv11Wrapper(nn.Module):
                 dummy_img = torch.zeros(1, 6, input_size[0], input_size[1], device=img.device)
                 # Forward pass to get actual output shape
                 dummy_output = self.forward(dummy_img)
-                
+
                 # Extract output shape from predictions
                 # For stereo3ddet, output is a dict with 10 branches
                 if isinstance(dummy_output, dict):
                     # Get shape from any branch (all have same spatial dimensions)
-                    sample_branch = dummy_output.get("heatmap", list(dummy_output.values())[0])
+                    sample_branch = dummy_output.get("heatmap", next(iter(dummy_output.values())))
                     if sample_branch is not None:
                         _, _, output_h, output_w = sample_branch.shape
                     else:
                         # Fallback: try to get from model stride if available
                         if hasattr(self, "stride") and self.stride is not None:
-                            stride = float(self.stride[0]) if isinstance(self.stride, torch.Tensor) else float(self.stride)
+                            stride = (
+                                float(self.stride[0]) if isinstance(self.stride, torch.Tensor) else float(self.stride)
+                            )
                             output_h = int(input_size[0] / stride)
                             output_w = int(input_size[1] / stride)
                         else:
@@ -1039,23 +1032,20 @@ class StereoYOLOv11Wrapper(nn.Module):
                         # Fallback: assume 8x downsampling for P3
                         output_h = input_size[0] // 8
                         output_w = input_size[1] // 8
-            
+
             self._target_generator = TargetGeneratorImproved(
                 output_size=(output_h, output_w),
                 num_classes=num_classes,
             )
-        
+
         # Convert labels to targets format (T134)
         targets_list = []
         for labels in labels_list:
-            target = self._target_generator.generate_targets(
-                labels,
-                input_size=input_size
-            )
+            target = self._target_generator.generate_targets(labels, input_size=input_size)
             # Move to same device as img
             target = {k: v.to(img.device) for k, v in target.items()}
             targets_list.append(target)
-        
+
         # Stack targets across batch dimension (T135)
         # Each target is a dict with tensors of shape [C, H, W]
         # We need to stack to [B, C, H, W]
@@ -1073,9 +1063,9 @@ class StereoYOLOv11Wrapper(nn.Module):
                 with torch.no_grad():
                     dummy_img = torch.zeros(1, 6, input_size[0], input_size[1], device=img.device)
                     dummy_output = self.forward(dummy_img)
-                    
+
                     if isinstance(dummy_output, dict):
-                        sample_branch = dummy_output.get("heatmap", list(dummy_output.values())[0])
+                        sample_branch = dummy_output.get("heatmap", next(iter(dummy_output.values())))
                         if sample_branch is not None:
                             _, _, output_h, output_w = sample_branch.shape
                         else:
@@ -1084,7 +1074,7 @@ class StereoYOLOv11Wrapper(nn.Module):
                     else:
                         output_h = input_size[0] // 8
                         output_w = input_size[1] // 8
-            
+
             num_classes = len(self.names) if isinstance(self.names, dict) else 3
             batched_targets = {
                 "heatmap": torch.zeros(img.shape[0], num_classes, output_h, output_w, device=img.device),
@@ -1098,21 +1088,21 @@ class StereoYOLOv11Wrapper(nn.Module):
                 "vertex_offset": torch.zeros(img.shape[0], 8, output_h, output_w, device=img.device),
                 "vertex_dist": torch.zeros(img.shape[0], 4, output_h, output_w, device=img.device),
             }
-        
+
         # Compute predictions if needed (T136)
         if preds is None:
             # Call forward to get predictions
             preds = self.forward(img)
-        
+
         # Ensure preds is in dict format
         if not isinstance(preds, dict):
             # If forward returned a tensor or other format, we need to handle it
             # For now, assume forward returns dict with 10 branch keys
             raise TypeError(f"Expected preds to be dict, got {type(preds)}")
-        
+
         # Compute loss (T137)
         total_loss, loss_dict = self.core.criterion(preds, batched_targets)
-        
+
         # Convert loss_dict to loss_items tensor in fixed order (T138)
         loss_items_list = [
             loss_dict.get("heatmap", torch.tensor(0.0, device=total_loss.device)),
@@ -1127,44 +1117,42 @@ class StereoYOLOv11Wrapper(nn.Module):
             loss_dict.get("vertex_dist", torch.tensor(0.0, device=total_loss.device)),
         ]
         loss_items = torch.stack(loss_items_list)  # [10]
-        
+
         # Return tuple (T139)
         return total_loss, loss_items
 
     def fuse(self, verbose=True):
         """Fuse Conv2d and BatchNorm2d layers for optimized inference.
-        
+
         This method fuses BatchNorm layers into Conv2d layers to improve inference speed.
         For StereoYOLOv11Wrapper, we perform basic fusion on the core model's modules.
-        
+
         Args:
             verbose (bool): Whether to print fusion information.
-            
+
         Returns:
             (nn.Module): Self (for method chaining).
         """
-        from ultralytics.utils.torch_utils import fuse_conv_and_bn
-        
         # Check if already fused
         if self.is_fused():
             if verbose:
                 print("Model is already fused.")
             return self
-        
+
         # Fuse BatchNorm layers in the core model
         # This is a simplified fusion - for full compatibility, we would need
         # to handle module replacement more carefully
         if verbose:
             print("Model fusion completed (simplified - BatchNorm layers remain for compatibility).")
-        
+
         return self
 
     def is_fused(self, thresh=10):
         """Check if the model has less than a certain threshold of BatchNorm layers.
-        
+
         Args:
             thresh (int): Threshold number of BatchNorm layers.
-            
+
         Returns:
             (bool): True if number of BatchNorm layers < thresh.
         """
