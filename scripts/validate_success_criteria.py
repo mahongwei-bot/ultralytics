@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-"""Success Criteria Validation Script for Stereo CenterNet Implementation.
+r"""Success Criteria Validation Script for Stereo CenterNet Implementation.
 
 T055: Validate all success criteria (SC-001 through SC-008) on KITTI validation set.
 
@@ -236,9 +236,6 @@ def validate_ap3d_accuracy(
     Returns:
         Tuple of (actual_ap3d, details_dict).
     """
-    from ultralytics.models.yolo.stereo3ddet.val import Stereo3DDetValidator
-    from ultralytics.cfg import get_cfg
-
     LOGGER.info(f"Running AP3D validation on {model_path}")
 
     # Load model
@@ -271,7 +268,9 @@ def validate_ap3d_accuracy(
         box_results = results.box
         if hasattr(box_results, "ap3d"):
             # Per-class AP3D
-            details["ap3d_per_class"] = box_results.ap3d.tolist() if torch.is_tensor(box_results.ap3d) else box_results.ap3d
+            details["ap3d_per_class"] = (
+                box_results.ap3d.tolist() if torch.is_tensor(box_results.ap3d) else box_results.ap3d
+            )
         if hasattr(box_results, "map3d"):
             details["map3d"] = float(box_results.map3d)
         if hasattr(box_results, "ap3d50"):
@@ -335,11 +334,9 @@ def validate_fps(
     model = YOLO(model_path, task="stereo3ddet")
 
     # Get dataloader
-    from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetDataset
-    from ultralytics.cfg import get_cfg
 
     # Load dataset config
-    data_cfg = YAML.load(data_yaml)
+    YAML.load(data_yaml)
 
     # Create dummy input for timing
     batch_size = 1
@@ -446,13 +443,15 @@ def validate_nms_duplicates(
     nms_result1 = heatmap_nms(heatmap1, kernel_size=3)
     peaks1 = (nms_result1 > 0).sum().item()
     duplicates1 = peaks1 - 1 if peaks1 > 1 else 0
-    test_cases.append({
-        "name": "single_peak",
-        "input_peaks": 1,
-        "output_peaks": peaks1,
-        "duplicates": duplicates1,
-        "passed": duplicates1 == 0,
-    })
+    test_cases.append(
+        {
+            "name": "single_peak",
+            "input_peaks": 1,
+            "output_peaks": peaks1,
+            "duplicates": duplicates1,
+            "passed": duplicates1 == 0,
+        }
+    )
     total_duplicates += duplicates1
 
     # Test case 2: Two separate peaks - both should remain
@@ -462,13 +461,15 @@ def validate_nms_duplicates(
     nms_result2 = heatmap_nms(heatmap2, kernel_size=3)
     peaks2 = (nms_result2 > 0).sum().item()
     duplicates2 = max(0, peaks2 - 2)  # Expect exactly 2 peaks
-    test_cases.append({
-        "name": "two_separate_peaks",
-        "input_peaks": 2,
-        "output_peaks": peaks2,
-        "duplicates": duplicates2,
-        "passed": peaks2 == 2,
-    })
+    test_cases.append(
+        {
+            "name": "two_separate_peaks",
+            "input_peaks": 2,
+            "output_peaks": peaks2,
+            "duplicates": duplicates2,
+            "passed": peaks2 == 2,
+        }
+    )
 
     # Test case 3: Adjacent peaks with clear winner - one should be suppressed
     heatmap3 = torch.zeros(1, 1, 10, 10, device=device)
@@ -477,13 +478,15 @@ def validate_nms_duplicates(
     nms_result3 = heatmap_nms(heatmap3, kernel_size=3)
     peaks3 = (nms_result3 > 0).sum().item()
     # After NMS, only the higher peak should remain (it's the max in 3x3 window)
-    test_cases.append({
-        "name": "adjacent_peaks_suppression",
-        "input_peaks": 2,
-        "output_peaks": peaks3,
-        "expected": 1,  # Only higher peak remains
-        "passed": peaks3 == 1,
-    })
+    test_cases.append(
+        {
+            "name": "adjacent_peaks_suppression",
+            "input_peaks": 2,
+            "output_peaks": peaks3,
+            "expected": 1,  # Only higher peak remains
+            "passed": peaks3 == 1,
+        }
+    )
 
     # Test case 4: Smooth region - no peaks should remain
     heatmap4 = torch.ones(1, 1, 10, 10, device=device) * 0.5
@@ -491,12 +494,14 @@ def validate_nms_duplicates(
     peaks4 = (nms_result4 > 0).sum().item()
     # In a uniform region, all values equal their neighborhood max, so all remain
     # This is expected behavior - no "duplicates" per se
-    test_cases.append({
-        "name": "uniform_region",
-        "input_value": 0.5,
-        "output_peaks": peaks4,
-        "passed": True,  # Expected behavior
-    })
+    test_cases.append(
+        {
+            "name": "uniform_region",
+            "input_value": 0.5,
+            "output_peaks": peaks4,
+            "passed": True,  # Expected behavior
+        }
+    )
 
     # Test case 5: Real-world simulation with Gaussian peaks
     heatmap5 = torch.zeros(1, 3, 96, 320, device=device)  # Typical heatmap size
@@ -506,7 +511,7 @@ def validate_nms_duplicates(
         for dy in range(-2, 3):
             for dx in range(-2, 3):
                 if 0 <= cy + dy < 96 and 0 <= cx + dx < 320:
-                    dist = (dy ** 2 + dx ** 2) ** 0.5
+                    dist = (dy**2 + dx**2) ** 0.5
                     val = max(0, 1.0 - dist * 0.3)
                     if heatmap5[0, 0, cy + dy, cx + dx] < val:
                         heatmap5[0, 0, cy + dy, cx + dx] = val
@@ -514,12 +519,14 @@ def validate_nms_duplicates(
     nms_result5 = heatmap_nms(heatmap5, kernel_size=3)
     peaks5 = (nms_result5 > 0.5).sum().item()  # Count significant peaks
     expected_peaks5 = len(centers)
-    test_cases.append({
-        "name": "gaussian_peaks_simulation",
-        "input_peaks": expected_peaks5,
-        "output_peaks": peaks5,
-        "passed": abs(peaks5 - expected_peaks5) <= 1,  # Allow small deviation
-    })
+    test_cases.append(
+        {
+            "name": "gaussian_peaks_simulation",
+            "input_peaks": expected_peaks5,
+            "output_peaks": peaks5,
+            "passed": abs(peaks5 - expected_peaks5) <= 1,  # Allow small deviation
+        }
+    )
 
     # Calculate total duplicates (peaks beyond expected)
     all_passed = all(tc["passed"] for tc in test_cases)
@@ -549,8 +556,7 @@ def validate_geometric_convergence(
 ) -> tuple[float, dict[str, Any]]:
     """Validate geometric solver convergence rate.
 
-    Tests that the geometric construction solver converges within max iterations
-    for at least 95% of valid detections.
+    Tests that the geometric construction solver converges within max iterations for at least 95% of valid detections.
 
     Args:
         model_path: Optional model path (not required for synthetic test).
@@ -561,8 +567,6 @@ def validate_geometric_convergence(
         Tuple of (convergence_rate, details_dict).
     """
     from ultralytics.models.yolo.stereo3ddet.geometric import (
-        GeometricConstruction,
-        GeometricObservations,
         CalibParams,
         solve_geometric_single,
     )
@@ -630,32 +634,38 @@ def validate_geometric_convergence(
 
             # Check convergence (result is tuple: x, y, z, theta, converged)
             if result is not None and len(result) >= 5:
-                x, y, z, theta, converged = result
+                _x, _y, z, _theta, converged = result
                 if converged:
                     converged_count += 1
                 else:
-                    failed_cases.append({
-                        "sample": i,
-                        "depth": depth,
-                        "orientation": orientation,
-                        "result_z": z,
-                    })
+                    failed_cases.append(
+                        {
+                            "sample": i,
+                            "depth": depth,
+                            "orientation": orientation,
+                            "result_z": z,
+                        }
+                    )
             elif result is not None:
                 # If result exists but doesn't have convergence flag, count as success
                 converged_count += 1
             else:
-                failed_cases.append({
-                    "sample": i,
-                    "depth": depth,
-                    "orientation": orientation,
-                    "error": "null_result",
-                })
+                failed_cases.append(
+                    {
+                        "sample": i,
+                        "depth": depth,
+                        "orientation": orientation,
+                        "error": "null_result",
+                    }
+                )
 
         except Exception as e:
-            failed_cases.append({
-                "sample": i,
-                "error": str(e),
-            })
+            failed_cases.append(
+                {
+                    "sample": i,
+                    "error": str(e),
+                }
+            )
 
     convergence_rate = converged_count / num_samples
 
@@ -686,8 +696,7 @@ def validate_occlusion_accuracy(
 ) -> tuple[float, dict[str, Any]]:
     """Validate occlusion classification accuracy.
 
-    Tests that occlusion classification correctly identifies occluded objects
-    based on depth-line analysis.
+    Tests that occlusion classification correctly identifies occluded objects based on depth-line analysis.
 
     Args:
         device: Optional device.
@@ -751,7 +760,7 @@ def validate_occlusion_accuracy(
 
         try:
             # Run classification - returns (occluded_indices, unoccluded_indices)
-            occluded_indices, unoccluded_indices = classify_occlusion(
+            occluded_indices, _unoccluded_indices = classify_occlusion(
                 detections=detections,
                 image_width=1242,
                 depth_tolerance=1.0,
@@ -769,14 +778,16 @@ def validate_occlusion_accuracy(
             matches = sum(1 for p, e in zip(predicted, expected) if p == e)
             accuracy = matches / len(expected) if expected else 1.0
 
-            test_cases.append({
-                "sample": i,
-                "num_objects": num_objects,
-                "predicted_occluded": len(occluded_indices),
-                "expected_occluded": sum(expected_occlusions),
-                "accuracy": float(accuracy),
-                "passed": accuracy >= 0.7,  # Relax threshold slightly
-            })
+            test_cases.append(
+                {
+                    "sample": i,
+                    "num_objects": num_objects,
+                    "predicted_occluded": len(occluded_indices),
+                    "expected_occluded": sum(expected_occlusions),
+                    "accuracy": float(accuracy),
+                    "passed": accuracy >= 0.7,  # Relax threshold slightly
+                }
+            )
 
             if accuracy >= 0.7:
                 correct_count += 1
@@ -784,11 +795,13 @@ def validate_occlusion_accuracy(
         except Exception as e:
             # For synthetic data, the algorithm may not find valid results
             # Count as passed if no crash
-            test_cases.append({
-                "sample": i,
-                "error": str(e),
-                "passed": False,
-            })
+            test_cases.append(
+                {
+                    "sample": i,
+                    "error": str(e),
+                    "passed": False,
+                }
+            )
 
     overall_accuracy = correct_count / num_samples if num_samples > 0 else 0.0
 
@@ -870,9 +883,9 @@ def run_validation(
             continue
 
         defn = CRITERIA_DEFINITIONS[crit_id]
-        LOGGER.info(f"\n{'='*60}")
+        LOGGER.info(f"\n{'=' * 60}")
         LOGGER.info(f"Validating {crit_id}: {defn['description']}")
-        LOGGER.info(f"{'='*60}")
+        LOGGER.info(f"{'=' * 60}")
 
         result = CriteriaResult(
             criteria_id=crit_id,
@@ -1119,4 +1132,3 @@ Examples:
 
 if __name__ == "__main__":
     exit(main())
-
