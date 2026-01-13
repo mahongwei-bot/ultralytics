@@ -4,8 +4,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -130,9 +129,10 @@ class TestProject3DTo2D:
         # Create a box that will have corners behind camera
         # Use a box far away with orientation that puts corners behind
         import numpy as np
+
         # Create box with center at z=1.0 but with large dimensions and rotation
         # that puts some corners behind camera
-        box_behind = Box3D(
+        Box3D(
             center_3d=(0.0, 0.0, 1.0),  # Very close to camera
             dimensions=(10.0, 10.0, 10.0),  # Large dimensions
             orientation=np.pi,  # Rotated 180 degrees
@@ -164,7 +164,7 @@ class TestStereo3DDetPredictor:
         """Test preprocessing stereo pair to 6-channel tensor."""
         # Load actual images
         left_img, right_img = load_stereo_pair(sample_left_image, sample_right_image)
-        
+
         # Stack to create 6-channel stereo image
         stereo_img = np.concatenate([left_img, right_img], axis=2)  # [H, W, 6]
 
@@ -231,4 +231,3 @@ class TestStereo3DDetPredictor:
         """Test batch prediction with multiple stereo pairs."""
         # This test requires a trained model and actual stereo images
         pass
-
