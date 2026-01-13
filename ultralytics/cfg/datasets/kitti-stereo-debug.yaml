@@ -11,7 +11,7 @@
 
 # Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
 path: kitti-stereo-debug # dataset root dir
-train: images/train/left # train images (left stereo) (relative to 'path') 
+train: images/train/left # train images (left stereo) (relative to 'path')
 val: images/val/left # val images (left stereo) (relative to 'path')
 
 # Stereo image pairs (required for stereo-based 3D detection)
@@ -23,4 +23,3 @@ names:
   0: car
   1: van
   2: truck
-

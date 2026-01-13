@@ -2,14 +2,9 @@
 
 """Unit tests for class filtering and reindexing functionality."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 import torch
-
-from ultralytics.data.stereo.box3d import Box3D
 
 
 class TestClassMappingUtilities:
@@ -73,19 +68,20 @@ def mock_dataset_structure(tmp_path):
     (tmp_path / "images" / "train" / "right").mkdir(parents=True, exist_ok=True)
     (tmp_path / "labels" / "train").mkdir(parents=True, exist_ok=True)
     (tmp_path / "calib" / "train").mkdir(parents=True, exist_ok=True)
-    
+
     # Create dummy images
     import cv2
-    import numpy as np
+
     dummy_img = np.zeros((375, 1242, 3), dtype=np.uint8)
     cv2.imwrite(str(tmp_path / "images" / "train" / "left" / "000000.png"), dummy_img)
     cv2.imwrite(str(tmp_path / "images" / "train" / "right" / "000000.png"), dummy_img)
-    
+
     # Create dummy calibration file
     calib_file = tmp_path / "calib" / "train" / "000000.txt"
     calib_file.write_text("fx: 721.5377\nfy: 721.5377\ncx: 609.5593\ncy: 172.8540\nbaseline: 0.54\n")
-    
+
     return tmp_path
+
 
 class TestStereo3DDetAdapterDatasetClassRemapping:
     """Test suite for Stereo3DDetAdapterDataset class remapping (T093)."""
@@ -108,21 +104,21 @@ class TestStereo3DDetAdapterDatasetClassRemapping:
 
         # Get item
         sample = adapter[0]
-        
+
         # Verify sample structure
         assert "img" in sample, "Sample should contain 'img' key"
         assert "labels" in sample, "Sample should contain 'labels' key"
-        
+
         labels = sample["labels"]
 
         # Verify class IDs are remapped in labels
         # Should have 3 labels (Car=0, Pedestrian=1, Cyclist=2), Van (1) filtered out
         assert len(labels) == 3, f"Expected 3 labels after filtering, got {len(labels)}"
-        
+
         # Verify all class IDs are in {0, 1, 2}
         class_ids = [label["class_id"] for label in labels]
         assert set(class_ids) == {0, 1, 2}, f"Expected class IDs {{0, 1, 2}}, got {set(class_ids)}"
-        
+
         # Verify specific mappings
         for label in labels:
             cid = label["class_id"]
@@ -180,7 +176,9 @@ class TestDecodeStereo3dOutputsWithFilteredClasses:
         assert len(boxes3d) > 0
         for box in boxes3d:
             assert box.class_id in {0, 1, 2}, f"Class ID {box.class_id} not in paper classes"
-            assert box.class_label in {"Car", "Pedestrian", "Cyclist"}, f"Class label {box.class_label} not in paper classes"
+            assert box.class_label in {"Car", "Pedestrian", "Cyclist"}, (
+                f"Class label {box.class_label} not in paper classes"
+            )
 
 
 class TestLabelsToBox3dListWithFiltering:
@@ -188,8 +186,8 @@ class TestLabelsToBox3dListWithFiltering:
 
     def test_labels_to_box3d_list_filters_and_remaps(self):
         """Test that _labels_to_box3d_list filters and remaps class IDs."""
-        from ultralytics.models.yolo.stereo3ddet.val import _labels_to_box3d_list
         from ultralytics.data.stereo.calib import CalibrationParameters
+        from ultralytics.models.yolo.stereo3ddet.val import _labels_to_box3d_list
 
         # Create labels with mixed classes (using original KITTI class IDs)
         labels = [
@@ -239,6 +237,7 @@ class TestLabelsToBox3dListWithFiltering:
             elif box.class_id == 1:
                 assert box.class_label == "Pedestrian"
 
+
 class TestLabelClassValidation:
     def test_validation_passes_when_names_match_labels(self, mock_dataset_structure):
         """Test that validation passes when names parameter matches actual label classes (T118)."""
@@ -253,7 +252,7 @@ class TestLabelClassValidation:
 
         # Create adapter with matching names (all 3 classes)
         names = {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
-        
+
         # Should not raise an error
         adapter = Stereo3DDetAdapterDataset(root=str(mock_dataset_structure), split="train", imgsz=384, names=names)
         assert adapter is not None
@@ -266,7 +265,7 @@ class TestLabelClassValidation:
         # Test case 1: Empty labels (no objects in label file)
         label_file = mock_dataset_structure / "labels" / "train" / "000000.txt"
         label_file.write_text("")  # Empty label file
-        
+
         names = {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
         # Should not raise error for empty labels (no classes to validate against)
         adapter = Stereo3DDetAdapterDataset(root=str(mock_dataset_structure), split="train", imgsz=384, names=names)
@@ -274,7 +273,7 @@ class TestLabelClassValidation:
 
         # Test case 2: Missing label file (should be handled gracefully by base dataset)
         label_file.unlink()  # Remove label file
-        
+
         # Should not raise error for missing label file (base dataset handles it)
         adapter = Stereo3DDetAdapterDataset(root=str(mock_dataset_structure), split="train", imgsz=384, names=names)
         assert adapter is not None
@@ -284,9 +283,8 @@ class TestLabelClassValidation:
         label_content = """1 0.5 0.5 0.1 0.1 0.5 0.1 1.5 1.7 3.9 0.0 0.1 0.1 0.2 0.1 0.2 0.2 0.1 0.2
 2 0.7 0.7 0.1 0.1 0.7 0.1 1.7 0.5 0.8 0.0 0.1 0.1 0.2 0.1 0.2 0.2 0.1 0.2"""
         label_file.write_text(label_content)  # Only Van (1) and Truck (2), no paper classes
-        
+
         # Should not raise error - all classes will be filtered out, but validation should pass
         # because there are no paper classes to validate against
         adapter = Stereo3DDetAdapterDataset(root=str(mock_dataset_structure), split="train", imgsz=384, names=names)
         assert adapter is not None
-

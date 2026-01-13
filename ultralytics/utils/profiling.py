@@ -2,35 +2,36 @@
 
 """Performance profiling utilities for stereo 3D detection validation."""
 
-import cProfile
+from __future__ import annotations
+
 import functools
 import json
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 from ultralytics.utils import LOGGER
 
 
 class ProfilingCollector:
     """Collects and aggregates profiling results from multiple function calls.
-    
-    This class maintains timing data for profiled functions and sections,
-    aggregating results across multiple calls and calculating statistics.
-    
+
+    This class maintains timing data for profiled functions and sections, aggregating results across multiple calls and
+    calculating statistics.
+
     Attributes:
         results: Dictionary mapping function/section names to profiling data
     """
 
     def __init__(self):
         """Initialize the profiling collector."""
-        self.results: Dict[str, Dict[str, Any]] = {}
+        self.results: dict[str, dict[str, Any]] = {}
         self._total_time: float = 0.0
 
     def record(self, name: str, elapsed_time: float, call_count: int = 1, **kwargs):
         """Record timing data for a function or section.
-        
+
         Args:
             name: Name of the profiled function or section
             elapsed_time: Time elapsed in seconds
@@ -51,9 +52,7 @@ class ProfilingCollector:
         # Aggregate timing data
         self.results[name]["total_time"] += elapsed_time
         self.results[name]["call_count"] += call_count
-        self.results[name]["avg_time_per_call"] = (
-            self.results[name]["total_time"] / self.results[name]["call_count"]
-        )
+        self.results[name]["avg_time_per_call"] = self.results[name]["total_time"] / self.results[name]["call_count"]
 
         # Update total time
         self._total_time = sum(r["total_time"] for r in self.results.values())
@@ -65,9 +64,9 @@ class ProfilingCollector:
                     self.results[func_name]["total_time"] / self._total_time * 100.0
                 )
 
-    def get_results(self) -> Dict[str, Dict[str, Any]]:
+    def get_results(self) -> dict[str, dict[str, Any]]:
         """Get aggregated profiling results.
-        
+
         Returns:
             Dictionary mapping function/section names to profiling data
         """
@@ -80,7 +79,7 @@ class ProfilingCollector:
 
     def get_total_time(self) -> float:
         """Get total time across all profiled functions.
-        
+
         Returns:
             Total time in seconds
         """
@@ -91,9 +90,9 @@ class ProfilingCollector:
 _global_collector = ProfilingCollector()
 
 
-def get_profiling_results() -> Dict[str, Dict[str, Any]]:
+def get_profiling_results() -> dict[str, dict[str, Any]]:
     """Get aggregated profiling results from the global collector.
-    
+
     Returns:
         Dictionary mapping function/section names to profiling data
     """
@@ -106,34 +105,35 @@ def reset_profiling():
 
 
 def profile_function(
-    func: Optional[Callable] = None,
-    name: Optional[str] = None,
-    collector: Optional[ProfilingCollector] = None,
+    func: Callable | None = None,
+    name: str | None = None,
+    collector: ProfilingCollector | None = None,
 ):
     """Decorator for profiling function execution time.
-    
-    This decorator measures the execution time of a function and records
-    it in the profiling collector. Uses time.perf_counter() for accurate timing.
-    
+
+    This decorator measures the execution time of a function and records it in the profiling collector. Uses
+    time.perf_counter() for accurate timing.
+
     Can be used with or without parentheses:
         @profile_function
         def my_func():
             ...
-        
+
         @profile_function(name="custom_name")
         def my_func():
             ...
-    
+
     Args:
         func: Function to profile (when used without parentheses)
         name: Optional name for the profiled function (defaults to function name)
         collector: Optional ProfilingCollector instance (defaults to global collector)
-    
-    Example:
+
+    Examples:
         @profile_function(name="compute_3d_iou_batch")
         def compute_3d_iou_batch(...):
             ...
     """
+
     def decorator(f: Callable) -> Callable:
         func_name = name or f.__name__
         profiler = collector or _global_collector
@@ -150,7 +150,7 @@ def profile_function(
                 profiler.record(func_name, elapsed_time, call_count=1)
 
         return wrapper
-    
+
     # Support both @profile_function and @profile_function(...)
     if func is None:
         # Called with parentheses: @profile_function(...)
@@ -161,17 +161,16 @@ def profile_function(
 
 
 @contextmanager
-def profile_section(name: str, collector: Optional[ProfilingCollector] = None):
+def profile_section(name: str, collector: ProfilingCollector | None = None):
     """Context manager for profiling code block execution time.
-    
-    This context manager measures the execution time of a code block
-    and records it in the profiling collector.
-    
+
+    This context manager measures the execution time of a code block and records it in the profiling collector.
+
     Args:
         name: Name for the profiled section
         collector: Optional ProfilingCollector instance (defaults to global collector)
-    
-    Example:
+
+    Examples:
         with profile_section("update_metrics"):
             # Code to profile
             ...
@@ -186,20 +185,20 @@ def profile_section(name: str, collector: Optional[ProfilingCollector] = None):
 
 
 def generate_profiling_report(
-    output_dir: Optional[Path] = None,
-    collector: Optional[ProfilingCollector] = None,
-) -> Dict[str, Any]:
+    output_dir: Path | None = None,
+    collector: ProfilingCollector | None = None,
+) -> dict[str, Any]:
     """Generate profiling report in JSON and Markdown formats.
-    
+
     This function generates a comprehensive profiling report with:
     - Top bottlenecks sorted by total time
     - Time breakdown by category
     - Statistical summary
-    
+
     Args:
         output_dir: Optional directory to save reports (defaults to current directory)
         collector: Optional ProfilingCollector instance (defaults to global collector)
-    
+
     Returns:
         Dictionary containing report data
     """
@@ -236,7 +235,7 @@ def generate_profiling_report(
     ]
 
     # Categorize by function name patterns
-    breakdown_by_category: Dict[str, float] = {}
+    breakdown_by_category: dict[str, float] = {}
     for name, data in results.items():
         category = _categorize_function(name)
         if category not in breakdown_by_category:
@@ -245,10 +244,7 @@ def generate_profiling_report(
 
     # Convert category times to percentages
     if total_time > 0:
-        breakdown_by_category = {
-            cat: (time / total_time * 100.0)
-            for cat, time in breakdown_by_category.items()
-        }
+        breakdown_by_category = {cat: (time / total_time * 100.0) for cat, time in breakdown_by_category.items()}
 
     # Generate recommendations
     recommendations = _generate_recommendations(top_bottlenecks, breakdown_by_category)
@@ -282,15 +278,15 @@ def generate_profiling_report(
 
 def _categorize_function(name: str) -> str:
     """Categorize a function name into a category for breakdown analysis.
-    
+
     Args:
         name: Function or section name
-    
+
     Returns:
         Category name (e.g., "IoU", "Decode", "Matching", etc.)
     """
     name_lower = name.lower()
-    
+
     if "iou" in name_lower or "intersection" in name_lower:
         return "IoU Computation"
     elif "decode" in name_lower or "postprocess" in name_lower:
@@ -308,15 +304,15 @@ def _categorize_function(name: str) -> str:
 
 
 def _generate_recommendations(
-    top_bottlenecks: list[Dict[str, Any]],
-    breakdown_by_category: Dict[str, float],
+    top_bottlenecks: list[dict[str, Any]],
+    breakdown_by_category: dict[str, float],
 ) -> list[str]:
     """Generate optimization recommendations based on profiling data.
-    
+
     Args:
         top_bottlenecks: List of top bottleneck functions
         breakdown_by_category: Time breakdown by category
-    
+
     Returns:
         List of recommendation strings
     """
@@ -346,7 +342,7 @@ def _generate_recommendations(
         if bottleneck["call_count"] > 100 and bottleneck["avg_time_per_call"] > 0.01:
             recommendations.append(
                 f"{bottleneck['function_name']} is called {bottleneck['call_count']} times "
-                f"with {bottleneck['avg_time_per_call']*1000:.2f}ms per call. "
+                f"with {bottleneck['avg_time_per_call'] * 1000:.2f}ms per call. "
                 "Consider caching or batching operations."
             )
 
@@ -362,9 +358,9 @@ def _generate_recommendations(
     return recommendations
 
 
-def _write_markdown_report(path: Path, report: Dict[str, Any]):
+def _write_markdown_report(path: Path, report: dict[str, Any]):
     """Write profiling report in Markdown format.
-    
+
     Args:
         path: Path to save the Markdown report
         report: Report data dictionary
@@ -372,11 +368,11 @@ def _write_markdown_report(path: Path, report: Dict[str, Any]):
     with open(path, "w") as f:
         f.write("# Performance Profiling Report\n\n")
         f.write(f"**Total Validation Time**: {report['total_time']:.2f} seconds\n\n")
-        
+
         f.write("## Top 5 Bottlenecks\n\n")
         f.write("| Function | Total Time (s) | Calls | Avg Time/Call (s) | % of Total |\n")
         f.write("|----------|----------------|-------|-------------------|------------|\n")
-        
+
         for bottleneck in report["top_bottlenecks"]:
             f.write(
                 f"| {bottleneck['function_name']} | "
@@ -385,27 +381,27 @@ def _write_markdown_report(path: Path, report: Dict[str, Any]):
                 f"{bottleneck['avg_time_per_call']:.6f} | "
                 f"{bottleneck['percentage_of_total']:.2f}% |\n"
             )
-        
+
         f.write("\n## Time Breakdown by Category\n\n")
         f.write("| Category | % of Total Time |\n")
         f.write("|----------|-----------------|\n")
-        
+
         for category, percentage in sorted(
             report["breakdown_by_category"].items(),
             key=lambda x: x[1],
             reverse=True,
         ):
             f.write(f"| {category} | {percentage:.2f}% |\n")
-        
+
         if report["recommendations"]:
             f.write("\n## Optimization Recommendations\n\n")
             for i, rec in enumerate(report["recommendations"], 1):
                 f.write(f"{i}. {rec}\n")
-        
+
         f.write("\n## All Profiled Functions\n\n")
         f.write("| Function | Total Time (s) | Calls | Avg Time/Call (s) | % of Total |\n")
         f.write("|----------|----------------|-------|-------------------|------------|\n")
-        
+
         for name, data in sorted(
             report["all_results"].items(),
             key=lambda x: x[1]["total_time"],
@@ -418,4 +414,3 @@ def _write_markdown_report(path: Path, report: Dict[str, Any]):
                 f"{data['avg_time_per_call']:.6f} | "
                 f"{data['percentage_of_total']:.2f}% |\n"
             )
-
