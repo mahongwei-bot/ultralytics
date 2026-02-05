@@ -1580,7 +1580,13 @@ class TorchVision(nn.Module):
     """
 
     def __init__(
-        self, model: str, weights: str = "DEFAULT", unwrap: bool = True, truncate: int = 2, split: bool = False, in_channels: int = None
+        self,
+        model: str,
+        weights: str = "DEFAULT",
+        unwrap: bool = True,
+        truncate: int = 2,
+        split: bool = False,
+        in_channels: int | None = None,
     ):
         """Load the model and weights from torchvision.
 
@@ -1590,8 +1596,8 @@ class TorchVision(nn.Module):
             unwrap (bool): Whether to unwrap the model.
             truncate (int): Number of layers to truncate.
             split (bool): Whether to split the output.
-            in_channels (int, optional): Number of input channels. If provided and different from the model's first layer,
-                the first convolution layer will be replaced to accept the specified number of channels.
+            in_channels (int, optional): Number of input channels. If provided and different from the model's first
+                layer, the first convolution layer will be replaced to accept the specified number of channels.
         """
         import torchvision  # scope for faster 'import ultralytics'
 
@@ -1600,11 +1606,11 @@ class TorchVision(nn.Module):
             self.m = torchvision.models.get_model(model, weights=weights)
         else:
             self.m = torchvision.models.__dict__[model](pretrained=bool(weights))
-        
+
         # Replace first conv layer if in_channels is specified and different
         if in_channels is not None:
             self._replace_first_conv(in_channels)
-        
+
         if unwrap:
             layers = list(self.m.children())
             if isinstance(layers[0], nn.Sequential):  # Second-level for some models like EfficientNet, Swin
@@ -1614,21 +1620,21 @@ class TorchVision(nn.Module):
         else:
             self.split = False
             self.m.head = self.m.heads = nn.Identity()
-    
+
     def _replace_first_conv(self, in_channels: int):
         """Replace the first convolution layer to accept different input channels.
-        
+
         Args:
             in_channels (int): Number of input channels for the first layer.
         """
         # Find the first convolution layer
         first_conv = None
         first_conv_path = None
-        
+
         # Check if model has a 'conv1' attribute (common in ResNet, etc.)
-        if hasattr(self.m, 'conv1'):
+        if hasattr(self.m, "conv1"):
             first_conv = self.m.conv1
-            first_conv_path = 'conv1'
+            first_conv_path = "conv1"
         else:
             # Search through children for first Conv2d layer
             for name, module in self.m.named_modules():
@@ -1636,7 +1642,7 @@ class TorchVision(nn.Module):
                     first_conv = module
                     first_conv_path = name
                     break
-        
+
         if first_conv is None:
             # If unwrapped, check the first layer in Sequential
             if isinstance(self.m, nn.Sequential) and len(self.m) > 0:
@@ -1644,7 +1650,7 @@ class TorchVision(nn.Module):
                 if isinstance(first_layer, nn.Conv2d):
                     first_conv = first_layer
                     first_conv_path = 0
-        
+
         if first_conv is not None:
             # Get the original conv parameters
             out_channels = first_conv.out_channels
@@ -1652,7 +1658,7 @@ class TorchVision(nn.Module):
             stride = first_conv.stride
             padding = first_conv.padding
             bias = first_conv.bias is not None
-            
+
             # Only replace if input channels differ
             if first_conv.in_channels != in_channels:
                 # Create new conv layer with modified input channels
@@ -1662,9 +1668,9 @@ class TorchVision(nn.Module):
                     kernel_size=kernel_size,
                     stride=stride,
                     padding=padding,
-                    bias=bias
+                    bias=bias,
                 )
-                
+
                 # Initialize weights: adapt pretrained weights for different input channels
                 # This is a common technique when adapting pretrained models to different input channels
                 with torch.no_grad():
@@ -1693,10 +1699,10 @@ class TorchVision(nn.Module):
                     else:
                         # Fewer channels: take first N channels
                         new_conv.weight = first_conv.weight[:, :in_channels]
-                    
+
                     if bias:
                         new_conv.bias = first_conv.bias.clone()
-                
+
                 # Replace the layer
                 if isinstance(first_conv_path, str):
                     setattr(self.m, first_conv_path, new_conv)
@@ -1704,10 +1710,10 @@ class TorchVision(nn.Module):
                     self.m[first_conv_path] = new_conv
                 else:
                     # Try to replace via parent module
-                    parent_name = '.'.join(first_conv_path.split('.')[:-1]) if '.' in first_conv_path else ''
+                    parent_name = ".".join(first_conv_path.split(".")[:-1]) if "." in first_conv_path else ""
                     if parent_name:
                         parent = dict(self.m.named_modules())[parent_name]
-                        setattr(parent, first_conv_path.split('.')[-1], new_conv)
+                        setattr(parent, first_conv_path.split(".")[-1], new_conv)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.
