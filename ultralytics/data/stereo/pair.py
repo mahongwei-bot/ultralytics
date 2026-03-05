@@ -19,11 +19,11 @@ class StereoImagePair:
 
     Attributes:
         left_image (numpy.ndarray | torch.Tensor): Left camera RGB image.
-            Shape: [H, W, 3] (RGB) or [3, H, W] (CHW format).
-            Type: uint8 (0-255) or float32 (0.0-1.0 normalized).
+        Shape: [H, W, 3] (RGB) or [3, H, W] (CHW format).
+        Type: uint8 (0-255) or float32 (0.0-1.0 normalized).
         right_image (numpy.ndarray | torch.Tensor): Right camera RGB image.
-            Shape: [H, W, 3] (RGB) or [3, H, W] (CHW format).
-            Type: uint8 (0-255) or float32 (0.0-1.0 normalized).
+        Shape: [H, W, 3] (RGB) or [3, H, W] (CHW format).
+        Type: uint8 (0-255) or float32 (0.0-1.0 normalized).
         image_id (str): Unique identifier for the image pair (e.g., "000001").
         calibration (CalibrationParameters): Camera intrinsic and extrinsic parameters.
         timestamp (float | None): Timestamp for synchronization (if available).
@@ -45,8 +45,7 @@ class StereoImagePair:
             # HWC or CHW format
             if left_shape[:2] != right_shape[:2] and left_shape[1:] != right_shape[1:]:
                 raise ValueError(
-                    f"Left and right images must have same dimensions, "
-                    f"got left={left_shape}, right={right_shape}"
+                    f"Left and right images must have same dimensions, got left={left_shape}, right={right_shape}"
                 )
         else:
             raise ValueError(f"Images must be 3D arrays, got left={left_shape}, right={right_shape}")
@@ -112,4 +111,3 @@ class StereoImagePair:
             "calibration": self.calibration.to_dict(),
             "timestamp": self.timestamp,
         }
-
