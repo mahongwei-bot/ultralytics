@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, Optional, List, Any
+from typing import Any
 
 import cv2
 import numpy as np
@@ -17,7 +17,7 @@ class StereoCalibration:
     height: int
     width: int
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "fx": self.fx,
             "fy": self.fy,
@@ -32,8 +32,8 @@ class StereoCalibration:
 class PhotometricAugmentor:
     """Wrapper around Ultralytics RandomHSV to apply identical HSV augmentation to both stereo views.
 
-    Ensures the same random gains are used for left and right images to preserve stereo correspondence.
-    Falls back to returning images unchanged if probability threshold not met or images are not 3-channel.
+    Ensures the same random gains are used for left and right images to preserve stereo correspondence. Falls back to
+    returning images unchanged if probability threshold not met or images are not 3-channel.
     """
 
     def __init__(
@@ -42,7 +42,7 @@ class PhotometricAugmentor:
         sgain: float = 0.5,
         vgain: float = 0.5,
         p_apply: float = 0.5,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ):
         from ultralytics.data.augment import RandomHSV  # lazy import
 
@@ -54,7 +54,7 @@ class PhotometricAugmentor:
         if seed is not None:
             np.random.seed(seed)
 
-    def __call__(self, left: np.ndarray, right: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def __call__(self, left: np.ndarray, right: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         if np.random.rand() >= self.p_apply:
             return left, right
         if left.shape[-1] != 3 or right.shape[-1] != 3:
@@ -88,8 +88,8 @@ class HorizontalFlipAugmentor:
         self,
         left: np.ndarray,
         right: np.ndarray,
-        labels: List[Dict[str, Any]],
-    ) -> Tuple[np.ndarray, np.ndarray, List[Dict[str, Any]]]:
+        labels: list[dict[str, Any]],
+    ) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
         if np.random.rand() >= self.p_apply:
             return left, right, labels
 
@@ -99,7 +99,7 @@ class HorizontalFlipAugmentor:
         left_f, right_f = right_f, left_f
 
         # Update labels
-        new_labels: List[Dict[str, Any]] = []
+        new_labels: list[dict[str, Any]] = []
         for obj in labels:
             lb = dict(obj["left_box"])
             rb = dict(obj["right_box"])
@@ -127,11 +127,11 @@ class HorizontalFlipAugmentor:
 class RandomScaleAugmentor:
     """Uniform random scaling of images with corresponding label scaling (normalized).
 
-    Since labels are normalized, scaling the image does not change normalized values,
-    but subsequent letterbox/pad may. We apply scaling here to the raw images only.
+    Since labels are normalized, scaling the image does not change normalized values, but subsequent letterbox/pad may.
+    We apply scaling here to the raw images only.
     """
 
-    def __init__(self, scale_range: Tuple[float, float] = (0.8, 1.2), p_apply: float = 0.5):
+    def __init__(self, scale_range: tuple[float, float] = (0.8, 1.2), p_apply: float = 0.5):
         self.scale_range = scale_range
         self.p_apply = float(p_apply)
 
@@ -139,13 +139,13 @@ class RandomScaleAugmentor:
         self,
         left: np.ndarray,
         right: np.ndarray,
-        labels: List[Dict[str, Any]],
-    ) -> Tuple[np.ndarray, np.ndarray, List[Dict[str, Any]]]:
+        labels: list[dict[str, Any]],
+    ) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
         if np.random.rand() >= self.p_apply:
             return left, right, labels
         s = float(np.random.uniform(*self.scale_range))
-        new_w = max(1, int(round(left.shape[1] * s)))
-        new_h = max(1, int(round(left.shape[0] * s)))
+        new_w = max(1, round(left.shape[1] * s))
+        new_h = max(1, round(left.shape[0] * s))
         left_s = cv2.resize(left, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         right_s = cv2.resize(right, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         # normalized labels unchanged
@@ -155,8 +155,8 @@ class RandomScaleAugmentor:
 class RandomCropAugmentor:
     """Identical random crop for left/right; adjusts normalized label centers.
 
-    Applies a crop window and updates centers in normalized coordinates.
-    Width/height are preserved unless cropped; we clamp boxes to remain inside.
+    Applies a crop window and updates centers in normalized coordinates. Width/height are preserved unless cropped; we
+    clamp boxes to remain inside.
     """
 
     def __init__(self, crop_height_ratio: float = 0.9, crop_width_ratio: float = 0.9, p_apply: float = 0.3):
@@ -168,8 +168,8 @@ class RandomCropAugmentor:
         self,
         left: np.ndarray,
         right: np.ndarray,
-        labels: List[Dict[str, Any]],
-    ) -> Tuple[np.ndarray, np.ndarray, List[Dict[str, Any]]]:
+        labels: list[dict[str, Any]],
+    ) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
         if np.random.rand() >= self.p_apply:
             return left, right, labels
         H, W = left.shape[:2]
@@ -181,7 +181,7 @@ class RandomCropAugmentor:
         right_c = right[y0 : y0 + ch, x0 : x0 + cw]
 
         # Update labels: shift centers by crop and renormalize to new size
-        new_labels: List[Dict[str, Any]] = []
+        new_labels: list[dict[str, Any]] = []
         for obj in labels:
             lb = dict(obj["left_box"])
             rb = dict(obj["right_box"])
@@ -247,9 +247,9 @@ class StereoAugmentationPipeline:
         self,
         left: np.ndarray,
         right: np.ndarray,
-        labels: List[Dict[str, Any]],
+        labels: list[dict[str, Any]],
         calibration: StereoCalibration | None = None,
-    ) -> Tuple[np.ndarray, np.ndarray, List[Dict[str, Any]], StereoCalibration | None]:
+    ) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]], StereoCalibration | None]:
         # Geometric first
         left, right, labels = self.hflip(left, right, labels)
 

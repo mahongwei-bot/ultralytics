@@ -20,7 +20,7 @@ class Box3D:
         center_3d (tuple[float, float, float]): 3D center position (x, y, z) in meters.
             Coordinate system: Camera coordinate system (x: right, y: down, z: forward).
         dimensions (tuple[float, float, float]): Object dimensions (length, width, height) in meters.
-            length: forward, width: right, height: up.
+        length: forward, width: right, height: up.
         orientation (float): Rotation angle around vertical (Y) axis in radians, range [-π, π].
         class_label (str): Object class name ("Car", "Pedestrian", "Cyclist").
         class_id (int): Numeric class identifier (0=Car, 1=Pedestrian, 2=Cyclist).
@@ -46,7 +46,7 @@ class Box3D:
         if length <= 0 or width <= 0 or height <= 0:
             raise ValueError(f"Dimensions must be positive, got {self.dimensions}")
 
-        x, y, z = self.center_3d
+        _x, _y, z = self.center_3d
         if z <= 0:
             raise ValueError(f"Depth (z) must be positive, got z={z}")
 
@@ -70,17 +70,11 @@ class Box3D:
                 )
             x_min, y_min, x_max, y_max = self.bbox_2d
             if not all(isinstance(v, (int, float)) for v in self.bbox_2d):
-                raise ValueError(
-                    f"bbox_2d must contain numeric values, got {self.bbox_2d}"
-                )
+                raise ValueError(f"bbox_2d must contain numeric values, got {self.bbox_2d}")
             if x_min >= x_max:
-                LOGGER.warning(
-                    f"bbox_2d xyxy format: x_min ({x_min}) must be < x_max ({x_max})"
-                )
+                LOGGER.warning(f"bbox_2d xyxy format: x_min ({x_min}) must be < x_max ({x_max})")
             if y_min >= y_max:
-                LOGGER.warning(
-                    f"bbox_2d xyxy format: y_min ({y_min}) must be < y_max ({y_max})"
-                )
+                LOGGER.warning(f"bbox_2d xyxy format: y_min ({y_min}) must be < y_max ({y_max})")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert 3D box to dictionary.
