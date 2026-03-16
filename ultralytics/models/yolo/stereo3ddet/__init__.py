@@ -26,38 +26,16 @@ See Also:
 # =============================================================================
 # Core Module Exports
 # =============================================================================
-from .model import Stereo3DDetModel
-from .train import Stereo3DDetTrainer
-from .val import Stereo3DDetValidator
-from .predict import Stereo3DDetPredictor
-from .visualize import plot_stereo_sample, plot_stereo_predictions
-from .metrics import Stereo3DDetMetrics
-
 # =============================================================================
-# GAP-003: Heatmap NMS (User Story 3)
+# Data Augmentation
 # =============================================================================
-from .nms import heatmap_nms
-
-# =============================================================================
-# GAP-004: Perspective Keypoint Selection (User Story 1)
-# =============================================================================
-from .keypoints import (
-    select_perspective_keypoints,
-    select_perspective_keypoints_batch,
-    get_visible_face_indices,
-    get_quadrant_name,
-)
-
-# =============================================================================
-# GAP-001: Geometric Construction (User Story 2)
-# =============================================================================
-from .geometric import (
-    GeometricObservations,
-    CalibParams,
-    GeometricConstruction,
-    solve_geometric_batch,
-    solve_geometric_single,
-    fallback_simple_triangulation,
+from .augment import (
+    HorizontalFlipAugmentor,
+    PhotometricAugmentor,
+    RandomCropAugmentor,
+    RandomScaleAugmentor,
+    StereoAugmentationPipeline,
+    StereoCalibration,
 )
 
 # =============================================================================
@@ -69,95 +47,116 @@ from .dense_align import (
 )
 
 # =============================================================================
+# GAP-001: Geometric Construction (User Story 2)
+# =============================================================================
+from .geometric import (
+    CalibParams,
+    GeometricConstruction,
+    GeometricObservations,
+    fallback_simple_triangulation,
+    solve_geometric_batch,
+    solve_geometric_single,
+)
+
+# =============================================================================
+# GAP-004: Perspective Keypoint Selection (User Story 1)
+# =============================================================================
+from .keypoints import (
+    get_quadrant_name,
+    get_visible_face_indices,
+    select_perspective_keypoints,
+    select_perspective_keypoints_batch,
+)
+from .metrics import Stereo3DDetMetrics
+from .model import Stereo3DDetModel
+
+# =============================================================================
+# GAP-003: Heatmap NMS (User Story 3)
+# =============================================================================
+from .nms import heatmap_nms
+
+# =============================================================================
 # GAP-006: Occlusion Classification (User Story 6)
 # =============================================================================
 from .occlusion import (
     classify_occlusion,
-    should_skip_dense_alignment,
     get_occlusion_stats,
+    should_skip_dense_alignment,
 )
+from .predict import Stereo3DDetPredictor
+from .train import Stereo3DDetTrainer
 
 # =============================================================================
 # Utility Functions
 # =============================================================================
 from .utils import (
-    get_paper_class_mapping,
     filter_and_remap_class_id,
-    is_paper_class,
+    get_paper_class_mapping,
     get_paper_class_names,
+    is_paper_class,
 )
-
-# =============================================================================
-# Data Augmentation
-# =============================================================================
-from .augment import (
-    StereoCalibration,
-    PhotometricAugmentor,
-    HorizontalFlipAugmentor,
-    RandomScaleAugmentor,
-    RandomCropAugmentor,
-    StereoAugmentationPipeline,
-)
+from .val import Stereo3DDetValidator
+from .visualize import plot_stereo_predictions, plot_stereo_sample
 
 __all__ = [
+    "CalibParams",
     # -------------------------------------------------------------------------
-    # Core Classes
+    # GAP-002: Dense Alignment
     # -------------------------------------------------------------------------
-    "Stereo3DDetModel",
-    "Stereo3DDetTrainer",
-    "Stereo3DDetValidator",
-    "Stereo3DDetPredictor",
-    "Stereo3DDetMetrics",
-    # -------------------------------------------------------------------------
-    # Visualization
-    # -------------------------------------------------------------------------
-    "plot_stereo_sample",
-    "plot_stereo_predictions",
-    # -------------------------------------------------------------------------
-    # GAP-003: Heatmap NMS
-    # -------------------------------------------------------------------------
-    "heatmap_nms",
-    # -------------------------------------------------------------------------
-    # GAP-004: Perspective Keypoint Selection
-    # -------------------------------------------------------------------------
-    "select_perspective_keypoints",
-    "select_perspective_keypoints_batch",
-    "get_visible_face_indices",
-    "get_quadrant_name",
+    "DenseAlignment",
     # -------------------------------------------------------------------------
     # GAP-001: Geometric Construction
     # -------------------------------------------------------------------------
     "GeometricConstruction",
     "GeometricObservations",
-    "CalibParams",
-    "solve_geometric_batch",
-    "solve_geometric_single",
-    "fallback_simple_triangulation",
+    "HorizontalFlipAugmentor",
+    "PhotometricAugmentor",
+    "RandomCropAugmentor",
+    "RandomScaleAugmentor",
+    "Stereo3DDetMetrics",
     # -------------------------------------------------------------------------
-    # GAP-002: Dense Alignment
+    # Core Classes
     # -------------------------------------------------------------------------
-    "DenseAlignment",
-    "create_dense_alignment_from_config",
+    "Stereo3DDetModel",
+    "Stereo3DDetPredictor",
+    "Stereo3DDetTrainer",
+    "Stereo3DDetValidator",
+    "StereoAugmentationPipeline",
+    # -------------------------------------------------------------------------
+    # Data Augmentation
+    # -------------------------------------------------------------------------
+    "StereoCalibration",
     # -------------------------------------------------------------------------
     # GAP-006: Occlusion Classification
     # -------------------------------------------------------------------------
     "classify_occlusion",
-    "should_skip_dense_alignment",
+    "create_dense_alignment_from_config",
+    "fallback_simple_triangulation",
+    "filter_and_remap_class_id",
     "get_occlusion_stats",
     # -------------------------------------------------------------------------
     # Utility Functions
     # -------------------------------------------------------------------------
     "get_paper_class_mapping",
-    "filter_and_remap_class_id",
-    "is_paper_class",
     "get_paper_class_names",
+    "get_quadrant_name",
+    "get_visible_face_indices",
     # -------------------------------------------------------------------------
-    # Data Augmentation
+    # GAP-003: Heatmap NMS
     # -------------------------------------------------------------------------
-    "StereoCalibration",
-    "PhotometricAugmentor",
-    "HorizontalFlipAugmentor",
-    "RandomScaleAugmentor",
-    "RandomCropAugmentor",
-    "StereoAugmentationPipeline",
+    "heatmap_nms",
+    "is_paper_class",
+    "plot_stereo_predictions",
+    # -------------------------------------------------------------------------
+    # Visualization
+    # -------------------------------------------------------------------------
+    "plot_stereo_sample",
+    # -------------------------------------------------------------------------
+    # GAP-004: Perspective Keypoint Selection
+    # -------------------------------------------------------------------------
+    "select_perspective_keypoints",
+    "select_perspective_keypoints_batch",
+    "should_skip_dense_alignment",
+    "solve_geometric_batch",
+    "solve_geometric_single",
 ]

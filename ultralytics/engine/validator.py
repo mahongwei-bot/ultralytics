@@ -178,12 +178,19 @@ class BaseValidator:
                         f"Setting batch={self.args.batch} input of shape ({self.args.batch}, 3, {imgsz[0]}, {imgsz[1]})"
                     )
                 else:
-                    LOGGER.info(f"Setting batch={self.args.batch} input of shape ({self.args.batch}, 3, {imgsz}, {imgsz})")
+                    LOGGER.info(
+                        f"Setting batch={self.args.batch} input of shape ({self.args.batch}, 3, {imgsz}, {imgsz})"
+                    )
 
             if str(self.args.data).rsplit(".", 1)[-1] in {"yaml", "yml"}:
                 # CRITICAL FIX: For stereo3ddet task, preserve channels=6 if already set
                 # This prevents BaseValidator from overwriting stereo data with RGB (channels=3)
-                if self.args.task == "stereo3ddet" and hasattr(self, "data") and isinstance(self.data, dict) and self.data.get("channels") == 6:
+                if (
+                    self.args.task == "stereo3ddet"
+                    and hasattr(self, "data")
+                    and isinstance(self.data, dict)
+                    and self.data.get("channels") == 6
+                ):
                     # Don't overwrite stereo data - it already has channels=6
                     pass  # Keep existing self.data
                 else:

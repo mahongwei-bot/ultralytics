@@ -9,15 +9,14 @@ from typing import Any
 
 import numpy as np
 
-from ultralytics.utils import DataExportMixin, LOGGER, SimpleClass
+from ultralytics.utils import LOGGER, DataExportMixin, SimpleClass
 
 
 class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
     """3D Detection Metrics Calculator.
 
-    Similar to DetMetrics but for 3D detection with AP3D calculation.
-    Computes AP3D (3D Average Precision) at IoU thresholds 0.5 and 0.7
-    for each class and difficulty level (easy, moderate, hard).
+    Similar to DetMetrics but for 3D detection with AP3D calculation. Computes AP3D (3D Average Precision) at IoU
+    thresholds 0.5 and 0.7 for each class and difficulty level (easy, moderate, hard).
 
     Attributes:
         names (dict[int, str]): Class name mapping {0: "Car", 1: "Pedestrian", 2: "Cyclist"}.
@@ -73,22 +72,36 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
             LOGGER.info(f"  Total batches: {len(stats_list)}")
             if len(stats_list) > 0:
                 first_batch = stats_list[0]
-                LOGGER.info(f"  Batch 0: tp shape={first_batch.get('tp', np.array([])).shape}, fp shape={first_batch.get('fp', np.array([])).shape}, conf len={len(first_batch.get('conf', []))}, pred_cls len={len(first_batch.get('pred_cls', []))}, target_cls len={len(first_batch.get('target_cls', []))}")
+                LOGGER.info(
+                    f"  Batch 0: tp shape={first_batch.get('tp', np.array([])).shape}, fp shape={first_batch.get('fp', np.array([])).shape}, conf len={len(first_batch.get('conf', []))}, pred_cls len={len(first_batch.get('pred_cls', []))}, target_cls len={len(first_batch.get('target_cls', []))}"
+                )
                 if len(stats_list) > 1:
                     # Show concatenated shape if we have multiple batches
                     try:
-                        tp_concat = np.concatenate([s["tp"] for s in stats_list], axis=0) if stats_list[0]["tp"].size > 0 else np.zeros((0, 2), dtype=bool)
-                        fp_concat = np.concatenate([s["fp"] for s in stats_list], axis=0) if stats_list[0]["fp"].size > 0 else np.zeros((0, 2), dtype=bool)
-                        conf_concat = np.concatenate([s["conf"] for s in stats_list], axis=0) if len(stats_list[0]["conf"]) > 0 else np.array([])
-                        LOGGER.info(f"  After concatenation: tp shape={tp_concat.shape}, fp shape={fp_concat.shape}, conf len={len(conf_concat)}")
+                        tp_concat = (
+                            np.concatenate([s["tp"] for s in stats_list], axis=0)
+                            if stats_list[0]["tp"].size > 0
+                            else np.zeros((0, 2), dtype=bool)
+                        )
+                        fp_concat = (
+                            np.concatenate([s["fp"] for s in stats_list], axis=0)
+                            if stats_list[0]["fp"].size > 0
+                            else np.zeros((0, 2), dtype=bool)
+                        )
+                        conf_concat = (
+                            np.concatenate([s["conf"] for s in stats_list], axis=0)
+                            if len(stats_list[0]["conf"]) > 0
+                            else np.array([])
+                        )
+                        LOGGER.info(
+                            f"  After concatenation: tp shape={tp_concat.shape}, fp shape={fp_concat.shape}, conf len={len(conf_concat)}"
+                        )
                     except Exception as e:
                         LOGGER.warning(f"  Could not compute concatenated shapes: {e}")
         except Exception as e:
             LOGGER.warning(f"Diagnostic logging failed (_diagnostic_log_statistics_accumulation): {e}")
 
-    def _diagnostic_log_ground_truth_counting(
-        self, target_cls: np.ndarray, nt_per_class: np.ndarray, nc: int
-    ) -> None:
+    def _diagnostic_log_ground_truth_counting(self, target_cls: np.ndarray, nt_per_class: np.ndarray, nc: int) -> None:
         """Log ground truth counting results for diagnostic purposes.
 
         Args:
@@ -102,7 +115,9 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
             unique_target_cls = np.unique(target_cls).tolist() if len(target_cls) > 0 else []
             target_min = int(np.min(target_cls)) if len(target_cls) > 0 else 0
             target_max = int(np.max(target_cls)) if len(target_cls) > 0 else 0
-            LOGGER.info(f"  target_cls: shape={target_cls.shape}, unique={unique_target_cls}, min={target_min}, max={target_max}")
+            LOGGER.info(
+                f"  target_cls: shape={target_cls.shape}, unique={unique_target_cls}, min={target_min}, max={target_max}"
+            )
             LOGGER.info(f"  nt_per_class: {nt_per_class.tolist()}")
             class_names = {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
             for i in range(min(nc, len(nt_per_class))):
@@ -144,9 +159,13 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
             LOGGER.info(f"  TP: shape={tp_class.shape}, count={tp_count}, sum={tp_sum}")
             LOGGER.info(f"  FP: shape={fp_class.shape}, count={fp_count}, sum={fp_sum}")
             if len(precision) > 0:
-                LOGGER.info(f"  Precision array: len={len(precision)}, range=[{float(np.min(precision)):.4f}, {float(np.max(precision)):.4f}]")
+                LOGGER.info(
+                    f"  Precision array: len={len(precision)}, range=[{float(np.min(precision)):.4f}, {float(np.max(precision)):.4f}]"
+                )
             if len(recall) > 0:
-                LOGGER.info(f"  Recall array: len={len(recall)}, range=[{float(np.min(recall)):.4f}, {float(np.max(recall)):.4f}]")
+                LOGGER.info(
+                    f"  Recall array: len={len(recall)}, range=[{float(np.min(recall)):.4f}, {float(np.max(recall)):.4f}]"
+                )
             LOGGER.info(f"  AP result: {ap:.4f}")
         except Exception as e:
             LOGGER.warning(f"Diagnostic logging failed (_diagnostic_log_ap3d_computation): {e}")
@@ -172,11 +191,21 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
 
         # Concatenate all statistics
         stats = {
-            "tp": np.concatenate([s["tp"] for s in self.stats], axis=0) if self.stats[0]["tp"].size > 0 else np.zeros((0, 2), dtype=bool),
-            "fp": np.concatenate([s["fp"] for s in self.stats], axis=0) if self.stats[0]["fp"].size > 0 else np.zeros((0, 2), dtype=bool),
-            "conf": np.concatenate([s["conf"] for s in self.stats], axis=0) if len(self.stats[0]["conf"]) > 0 else np.array([]),
-            "pred_cls": np.concatenate([s["pred_cls"] for s in self.stats], axis=0) if len(self.stats[0]["pred_cls"]) > 0 else np.array([], dtype=int),
-            "target_cls": np.concatenate([s["target_cls"] for s in self.stats], axis=0) if len(self.stats[0]["target_cls"]) > 0 else np.array([], dtype=int),
+            "tp": np.concatenate([s["tp"] for s in self.stats], axis=0)
+            if self.stats[0]["tp"].size > 0
+            else np.zeros((0, 2), dtype=bool),
+            "fp": np.concatenate([s["fp"] for s in self.stats], axis=0)
+            if self.stats[0]["fp"].size > 0
+            else np.zeros((0, 2), dtype=bool),
+            "conf": np.concatenate([s["conf"] for s in self.stats], axis=0)
+            if len(self.stats[0]["conf"]) > 0
+            else np.array([]),
+            "pred_cls": np.concatenate([s["pred_cls"] for s in self.stats], axis=0)
+            if len(self.stats[0]["pred_cls"]) > 0
+            else np.array([], dtype=int),
+            "target_cls": np.concatenate([s["target_cls"] for s in self.stats], axis=0)
+            if len(self.stats[0]["target_cls"]) > 0
+            else np.array([], dtype=int),
         }
 
         if len(stats["conf"]) == 0:
@@ -193,12 +222,22 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
         pred_cls = stats["pred_cls"][i]
 
         # Find unique classes
-        unique_classes = np.unique(stats["target_cls"]) if len(stats["target_cls"]) > 0 else np.unique(pred_cls) if len(pred_cls) > 0 else np.array([])
+        unique_classes = (
+            np.unique(stats["target_cls"])
+            if len(stats["target_cls"]) > 0
+            else np.unique(pred_cls)
+            if len(pred_cls) > 0
+            else np.array([])
+        )
         if len(unique_classes) == 0:
             return {}
 
-        nc = len(unique_classes)
-        nt_per_class = np.bincount(stats["target_cls"].astype(int), minlength=self.nc) if len(stats["target_cls"]) > 0 else np.zeros(self.nc, dtype=int)
+        len(unique_classes)
+        nt_per_class = (
+            np.bincount(stats["target_cls"].astype(int), minlength=self.nc)
+            if len(stats["target_cls"]) > 0
+            else np.zeros(self.nc, dtype=int)
+        )
 
         # DIAGNOSTIC START
         # self._diagnostic_log_ground_truth_counting(stats["target_cls"], nt_per_class, self.nc)
@@ -268,7 +307,10 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
                 precision_results[iou_thresh][c] = float(precision[-1]) if len(precision) > 0 else 0.0
                 recall_results[iou_thresh][c] = float(recall[-1]) if len(recall) > 0 else 0.0
                 f1_results[iou_thresh][c] = (
-                    2 * precision_results[iou_thresh][c] * recall_results[iou_thresh][c] / (precision_results[iou_thresh][c] + recall_results[iou_thresh][c] + 1e-16)
+                    2
+                    * precision_results[iou_thresh][c]
+                    * recall_results[iou_thresh][c]
+                    / (precision_results[iou_thresh][c] + recall_results[iou_thresh][c] + 1e-16)
                 )
 
         # Store results
@@ -289,10 +331,11 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
     @property
     def results_dict(self) -> dict[str, Any]:
         """Return results as dictionary with flat scalar values (T148, T149).
-        
+
         Flattens nested precision/recall/f1 dictionaries and ap3d dictionaries
         into scalar mean values to be compatible with BaseValidator's rounding logic.
         """
+
         # Flatten nested metric dict to scalar mean value
         def flatten_metric(metric_dict: dict) -> float:
             """Flatten nested metric dict to scalar mean value."""
@@ -308,17 +351,37 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
                     # Flat dict: {class_name: value}
                     all_values.append(value)
             return float(np.mean(all_values)) if all_values else 0.0
-        
+
         # Flatten precision, recall, f1 from nested dict {0.5: {class_id: value}, 0.7: {class_id: value}}
         # to scalar mean values across all IoU thresholds and classes
-        precision_scalar = flatten_metric(self.precision) if isinstance(self.precision, dict) else (float(self.precision) if isinstance(self.precision, (int, float)) else 0.0)
-        recall_scalar = flatten_metric(self.recall) if isinstance(self.recall, dict) else (float(self.recall) if isinstance(self.recall, (int, float)) else 0.0)
-        f1_scalar = flatten_metric(self.f1) if isinstance(self.f1, dict) else (float(self.f1) if isinstance(self.f1, (int, float)) else 0.0)
-        
+        precision_scalar = (
+            flatten_metric(self.precision)
+            if isinstance(self.precision, dict)
+            else (float(self.precision) if isinstance(self.precision, (int, float)) else 0.0)
+        )
+        recall_scalar = (
+            flatten_metric(self.recall)
+            if isinstance(self.recall, dict)
+            else (float(self.recall) if isinstance(self.recall, (int, float)) else 0.0)
+        )
+        f1_scalar = (
+            flatten_metric(self.f1)
+            if isinstance(self.f1, dict)
+            else (float(self.f1) if isinstance(self.f1, (int, float)) else 0.0)
+        )
+
         # Flatten ap3d_50 and ap3d_70 from dict {class_name: value} to scalar mean values
-        ap3d_50_scalar = flatten_metric(self.ap3d_50) if isinstance(self.ap3d_50, dict) else (float(self.ap3d_50) if isinstance(self.ap3d_50, (int, float)) else 0.0)
-        ap3d_70_scalar = flatten_metric(self.ap3d_70) if isinstance(self.ap3d_70, dict) else (float(self.ap3d_70) if isinstance(self.ap3d_70, (int, float)) else 0.0)
-        
+        ap3d_50_scalar = (
+            flatten_metric(self.ap3d_50)
+            if isinstance(self.ap3d_50, dict)
+            else (float(self.ap3d_50) if isinstance(self.ap3d_50, (int, float)) else 0.0)
+        )
+        ap3d_70_scalar = (
+            flatten_metric(self.ap3d_70)
+            if isinstance(self.ap3d_70, dict)
+            else (float(self.ap3d_70) if isinstance(self.ap3d_70, (int, float)) else 0.0)
+        )
+
         return {
             "ap3d_50": ap3d_50_scalar,
             "ap3d_70": ap3d_70_scalar,
@@ -353,4 +416,3 @@ class Stereo3DDetMetrics(SimpleClass, DataExportMixin):
     def clear_stats(self) -> None:
         """Clear stored statistics."""
         self.stats = []
-
