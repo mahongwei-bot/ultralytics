@@ -1,5 +1,5 @@
 """
-Stereo 3D Augmentation - Option A (flip + swap) Validation Suite
+Stereo 3D Augmentation - Option A (flip + swap) Validation Suite.
 
 Industrial-style checks adapted to current label schema:
 - Labels: list[dict] with keys 'left_box' (cx, cy, w, h) and 'right_box' (cx, w); all normalized.
@@ -7,21 +7,20 @@ Industrial-style checks adapted to current label schema:
 
 This suite verifies core invariants and emits visualization artifacts for manual inspection.
 """
-from pathlib import Path
+
+from pathlib import Path as _Path
+
 import cv2
 import numpy as np
 import pytest
-
-from ultralytics.models.yolo.stereo3ddet.augment import (
-    PhotometricAugmentor,
-    HorizontalFlipAugmentor,
-    RandomScaleAugmentor,
-    RandomCropAugmentor,
-    StereoAugmentationPipeline,
-)
-from pathlib import Path as _Path
 from ultralytics.data.kitti_stereo import KITTIStereoDataset
 
+from ultralytics.models.yolo.stereo3ddet.augment import (
+    HorizontalFlipAugmentor,
+    PhotometricAugmentor,
+    RandomCropAugmentor,
+    RandomScaleAugmentor,
+)
 
 # Local copies of helpers to avoid cross-test imports
 ARTIFACT_DIR = _Path("/root/ultralytics/tests/artifacts/stereo_aug")
@@ -108,8 +107,12 @@ def test_flip_swap_invariants_suite(idx):
 
     cv2.imwrite(str(SUITE_ARTIFACTS / f"{img_id}_suite_flip_left_before.png"), draw_label_markers(left, labels, False))
     cv2.imwrite(str(SUITE_ARTIFACTS / f"{img_id}_suite_flip_right_before.png"), draw_label_markers(right, labels, True))
-    cv2.imwrite(str(SUITE_ARTIFACTS / f"{img_id}_suite_flip_left_after.png"), draw_label_markers(left_f, labels_f, False))
-    cv2.imwrite(str(SUITE_ARTIFACTS / f"{img_id}_suite_flip_right_after.png"), draw_label_markers(right_f, labels_f, True))
+    cv2.imwrite(
+        str(SUITE_ARTIFACTS / f"{img_id}_suite_flip_left_after.png"), draw_label_markers(left_f, labels_f, False)
+    )
+    cv2.imwrite(
+        str(SUITE_ARTIFACTS / f"{img_id}_suite_flip_right_after.png"), draw_label_markers(right_f, labels_f, True)
+    )
 
     # Image swap + flip
     assert np.array_equal(left_f, cv2.flip(right, 1))
@@ -142,8 +145,8 @@ def test_scale_normalized_labels_unchanged_suite(idx):
     left, right, labels, _ = load_real_sample(index=idx)
     aug = RandomScaleAugmentor(scale_range=(1.15, 1.15), p_apply=1.0)
     left_s, right_s, labels_s = aug(left, right, labels)
-    assert left_s.shape[0] == int(round(left.shape[0] * 1.15))
-    assert left_s.shape[1] == int(round(left.shape[1] * 1.15))
+    assert left_s.shape[0] == round(left.shape[0] * 1.15)
+    assert left_s.shape[1] == round(left.shape[1] * 1.15)
     assert right_s.shape == left_s.shape
     assert labels_s == labels
 

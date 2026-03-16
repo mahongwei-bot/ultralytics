@@ -36,14 +36,14 @@ nc: 3
 #     - Expected AP3D: ~32% (Moderate, KITTI)
 #     - Dependencies: torchvision (included)
 #
-#   - "resnet50": ResNet-50 backbone (2048 output channels)  
+#   - "resnet50": ResNet-50 backbone (2048 output channels)
 #     - Best for: Higher accuracy when speed is less critical
 #     - Expected AP3D: ~35% (Moderate, KITTI)
 #     - Dependencies: torchvision (included)
 #
 #   - "dla34": DLA-34 with Deep Layer Aggregation (512 output channels)
 #     - Best for: Maximum accuracy (+8.73% AP3D vs ResNet-18)
-#     - Expected AP3D: ~41% (Moderate, KITTI) 
+#     - Expected AP3D: ~41% (Moderate, KITTI)
 #     - Inference speed: ~20+ FPS
 #     - Dependencies: timm>=0.9.0 (install with: pip install timm)
 #
@@ -100,10 +100,10 @@ mean_dims:
 inference:
   # Confidence threshold for detection filtering
   conf_threshold: 0.3
-  
+
   # Maximum number of detections to return per image
   top_k: 100
-  
+
   # Heatmap NMS (GAP-003): Apply 3×3 max pooling to suppress non-maxima
   # Paper: Section 3.1 "For inference, use the 3×3 max pooling operation instead of NMS"
   use_nms: true
@@ -118,14 +118,14 @@ inference:
 geometric_construction:
   # Enable geometric construction solver
   enabled: true
-  
+
   # Gauss-Newton solver parameters
   max_iterations: 10
   tolerance: 1.0e-6
-  
+
   # Levenberg-Marquardt damping factor for numerical stability
   damping: 1.0e-3
-  
+
   # Fallback to simple triangulation if solver fails to converge
   fallback_on_failure: true
 
@@ -138,17 +138,17 @@ geometric_construction:
 dense_alignment:
   # Enable dense alignment for depth refinement
   enabled: true
-  
+
   # Matching method: "ncc" (Normalized Cross-Correlation) or "sad" (Sum of Absolute Differences)
   # NCC is more robust to lighting variations, SAD is faster
   method: ncc
-  
+
   # Depth search range (meters) around initial estimate
   depth_search_range: 2.0
-  
+
   # Number of depth hypotheses to evaluate
   depth_steps: 32
-  
+
   # Patch size for photometric matching (pixels)
   patch_size: 7
 
@@ -161,7 +161,7 @@ dense_alignment:
 occlusion:
   # Enable occlusion classification
   enabled: true
-  
+
   # Skip dense alignment for heavily occluded objects (improves robustness)
   skip_dense_for_occluded: true
 
@@ -181,7 +181,7 @@ training:
   # Enables automatic balancing of loss components using learned uncertainty parameters
   # Paper: Kendall et al. "Multi-Task Learning Using Uncertainty to Weigh Losses"
   use_uncertainty_weighting: false
-  
+
   # Individual loss weights (used when uncertainty_weighting is disabled)
   loss_weights:
     heatmap: 1.0
@@ -194,7 +194,6 @@ training:
     vertices: 1.0
     vertex_offset: 1.0
     vertex_dist: 1.0
-
 # =============================================================================
 # Performance Targets (from paper)
 # =============================================================================

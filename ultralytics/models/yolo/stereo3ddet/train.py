@@ -10,21 +10,21 @@ import cv2
 import numpy as np
 import torch
 
+from ultralytics.data import build_dataloader
 from ultralytics.models import yolo
-from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK, YAML
-from ultralytics.models.yolo.stereo3ddet.visualize import plot_stereo_sample
 from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetDataset
 from ultralytics.models.yolo.stereo3ddet.model import Stereo3DDetModel
-from ultralytics.data import build_dataloader
-from ultralytics.data.stereo.target_improved import TargetGenerator as TargetGeneratorImproved
+from ultralytics.models.yolo.stereo3ddet.visualize import plot_stereo_sample
+from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK, YAML
 from ultralytics.utils.plotting import plot_labels
+
 
 class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
     """Stereo 3D Detection trainer.
 
-    Initial scaffolding that reuses the standard DetectionTrainer while setting task to 'stereo3ddet'.
-    This enables `yolo train task=stereo3ddet` end-to-end, using default detection behaviors until
-    a dedicated stereo 3D head/loss and dataset pipe are added.
+    Initial scaffolding that reuses the standard DetectionTrainer while setting task to 'stereo3ddet'. This enables
+    `yolo train task=stereo3ddet` end-to-end, using default detection behaviors until a dedicated stereo 3D head/loss
+    and dataset pipe are added.
     """
 
     def __init__(self, cfg=DEFAULT_CFG, overrides: dict[str, Any] | None = None, _callbacks=None):
@@ -48,12 +48,12 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
 
     def _determine_loss_names(self):
         """Determine loss names dynamically from model's loss dictionary keys or loss_names attribute.
-        
+
         Priority order:
         1. Check if model has loss_names attribute
         2. Check if model.core.criterion returns loss_dict with keys (StereoYOLOv11Wrapper)
         3. Fallback to hardcoded list if model structure unknown
-        
+
         Sets self.loss_names as tuple matching DetectionTrainer pattern.
         """
         # Default loss names for stereo 3D detection (10 branches)
@@ -70,7 +70,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
             "vertex_offset_loss",
             "vertex_dist_loss",
         )
-        
+
         # Check if loss_names is already set to stereo 3D detection names (10 branches)
         if hasattr(self, "loss_names") and self.loss_names:
             if isinstance(self.loss_names, (tuple, list)) and len(self.loss_names) == 10:
@@ -78,14 +78,18 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
                 current_set = set(self.loss_names)
                 if expected_set == current_set:
                     return  # Already set correctly to stereo loss names
-        
+
         # Try to get from model
         if hasattr(self, "model") and self.model is not None:
             # Option 1: Check if model has loss_names attribute
             if hasattr(self.model, "loss_names") and self.model.loss_names:
-                self.loss_names = tuple(self.model.loss_names) if isinstance(self.model.loss_names, (list, tuple)) else (self.model.loss_names,)
+                self.loss_names = (
+                    tuple(self.model.loss_names)
+                    if isinstance(self.model.loss_names, (list, tuple))
+                    else (self.model.loss_names,)
+                )
                 return
-            
+
             # Option 2: Check if model is StereoYOLOv11Wrapper and has core.criterion
             # The criterion returns loss_dict with keys matching default_loss_names
             if hasattr(self.model, "core") and hasattr(self.model.core, "criterion"):
@@ -93,30 +97,30 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
                 # We can use the default loss names directly
                 self.loss_names = default_loss_names
                 return
-            
+
             # Option 3: Try to extract from model.loss() return value
             # Note: StereoYOLOv11Wrapper.loss() returns (total_loss, loss_items) not (total_loss, loss_dict)
             # So we need to check the model structure instead
             if hasattr(self.model, "core") and hasattr(self.model.core, "criterion"):
                 # Already handled above
                 pass
-        
+
         # Option 4: Fallback to default loss names for stereo 3D detection
         self.loss_names = default_loss_names
 
     def progress_string(self):
-        """T205: Return a formatted string showing training progress with dynamically determined loss branches.
-        
+        r"""T205: Return a formatted string showing training progress with dynamically determined loss branches.
+
         Follows DetectionTrainer pattern from detect/train.py:187-195.
         Format: ("\n" + "%11s" * (4 + len(self.loss_names))) % ("Epoch", "GPU_mem", *self.loss_names, "Instances", "Size")
-        
+
         Returns:
             str: Formatted progress string with column headers.
         """
         # Ensure loss_names is determined
         if not hasattr(self, "loss_names") or not self.loss_names:
             self._determine_loss_names()
-        
+
         return ("\n" + "%11s" * (4 + len(self.loss_names))) % (
             "Epoch",
             "GPU_mem",
@@ -141,7 +145,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
                 "nc": 3,
                 "channels": 6,
             }
-        
+
         # Load YAML if a path is provided; accept dicts directly
         data_cfg = self.args.data
         if isinstance(data_cfg, (str, Path)):
@@ -168,12 +172,13 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
 
         # Names/nc fallback - use paper classes (3 classes: Car, Pedestrian, Cyclist)
         from ultralytics.models.yolo.stereo3ddet.utils import get_paper_class_names
+
         names = data_cfg.get("names") or get_paper_class_names()  # {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
         nc = data_cfg.get("nc", len(names))
 
         # Extract mean dimensions if present in dataset config
         mean_dims = data_cfg.get("mean_dims")
-        
+
         # Return a dict compatible with BaseTrainer expectations, plus stereo descriptors
         return {
             "yaml_file": str(self.args.data) if isinstance(self.args.data, (str, Path)) else None,
@@ -203,7 +208,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
                 imgsz_hw = (int(imgsz[0]), int(imgsz[1]))  # (H, W)
             else:
                 imgsz_hw = (int(imgsz), int(imgsz))  # square fallback
-            
+
             # Determine output_size from model if available, otherwise use default (8x downsampling)
             output_size = None
             if hasattr(self, "model") and self.model is not None:
@@ -212,17 +217,17 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
                         dummy_img = torch.zeros(1, 6, imgsz_hw[0], imgsz_hw[1], device=self.device)
                         dummy_output = self.model(dummy_img)
                         if isinstance(dummy_output, dict):
-                            sample_branch = dummy_output.get("heatmap", list(dummy_output.values())[0])
+                            sample_branch = dummy_output.get("heatmap", next(iter(dummy_output.values())))
                             if sample_branch is not None:
                                 _, _, output_h, output_w = sample_branch.shape
                                 output_size = (output_h, output_w)
                 except Exception:
                     # Fallback to default if model forward fails
                     pass
-            
+
             # Get mean_dims from dataset config
             mean_dims = self.data.get("mean_dims")
-            
+
             return Stereo3DDetDataset(
                 root=str(desc.get("root", ".")),
                 split=str(desc.get("split", "train")),
@@ -270,9 +275,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
         Returns:
             (Stereo3DDetModel): Initialized stereo 3D detection model.
         """
-        model = Stereo3DDetModel(
-            cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1
-        )
+        model = Stereo3DDetModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
         if verbose and RANK == -1:
             LOGGER.info(
                 f"Initialized Stereo3DDetModel with {self.data['nc']} classes and {self.data['channels']} input channels"
@@ -292,7 +295,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
 
     def preprocess_batch(self, batch):
         """Normalize 6-channel images to float [0,1] and move targets to device.
-        
+
         Targets are now generated in the dataset's collate_fn, so we just need to
         move them to the device if they're not already there.
         """
@@ -307,7 +310,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
         for k in ("batch_idx", "cls", "bboxes"):
             if k in batch and isinstance(batch[k], torch.Tensor):
                 batch[k] = batch[k].to(self.device, non_blocking=True)
-        
+
         return batch
 
     def _forward_train(self, batch):
@@ -319,6 +322,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
             return out["loss"], out
         # Fallback for unexpected outputs
         import torch
+
         return out if isinstance(out, torch.Tensor) else torch.tensor(0.0, device=imgs.device), {"out": out}
 
     def plot_training_samples(self, batch: dict[str, Any], ni: int) -> None:
@@ -327,7 +331,7 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
         This supplements the default detection plot with a stereo visualization by loading the matching right image
         and labels from `self.data['path']`.
         """
-        assert 'im_file' in batch, "im_file is required in batch"
+        assert "im_file" in batch, "im_file is required in batch"
         im_files = batch["im_file"]
         # Prepare up to 4 stereo previews per batch
         previews = min(4, len(im_files))
@@ -393,7 +397,9 @@ class Stereo3DDetTrainer(yolo.detect.DetectionTrainer):
         image_ids = getattr(dataset, "image_ids", None)
         parse_labels = getattr(dataset, "_parse_labels", None)
         if label_dir is None or image_ids is None or parse_labels is None:
-            LOGGER.warning("stereo3ddet: plot_training_labels() skipped (dataset missing label_dir/image_ids/_parse_labels).")
+            LOGGER.warning(
+                "stereo3ddet: plot_training_labels() skipped (dataset missing label_dir/image_ids/_parse_labels)."
+            )
             return
 
         boxes_list: list[list[float]] = []

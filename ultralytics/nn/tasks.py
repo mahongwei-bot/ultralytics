@@ -78,12 +78,14 @@ from ultralytics.nn.modules import (
 StereoCenterNetHead = None
 Stereo3DDetHeadYOLO11 = None
 
+
 def _lazy_import_stereo_center_net_head():
     """Lazy import of StereoCenterNetHead to avoid circular dependencies."""
     global StereoCenterNetHead
     if StereoCenterNetHead is None:
         try:
             from ultralytics.models.yolo.stereo3ddet.stereo_yolo_v11 import StereoCenterNetHead as SCH
+
             StereoCenterNetHead = SCH
         except ImportError:
             pass
@@ -96,10 +98,12 @@ def _lazy_import_stereo3ddet_head_yolo11():
     if Stereo3DDetHeadYOLO11 is None:
         try:
             from ultralytics.models.yolo.stereo3ddet.head_yolo11 import Stereo3DDetHeadYOLO11 as SYH
+
             Stereo3DDetHeadYOLO11 = SYH
         except ImportError:
             pass
     return Stereo3DDetHeadYOLO11
+
 
 # StereoConv is an alias for Conv (handles 6-channel stereo input)
 # It's functionally identical to Conv but named to indicate 6-channel stereo usage
@@ -1698,7 +1702,11 @@ def parse_model(d, ch, verbose=True):
 
         # Special handling for TorchVision to pass in_channels
         if m is TorchVision:
-            m_ = torch.nn.Sequential(*(m(*args, in_channels=c1) for _ in range(n))) if n > 1 else m(*args, in_channels=c1)
+            m_ = (
+                torch.nn.Sequential(*(m(*args, in_channels=c1) for _ in range(n)))
+                if n > 1
+                else m(*args, in_channels=c1)
+            )
         else:
             m_ = torch.nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
         t = str(m)[8:-2].replace("__main__.", "")  # module type
@@ -1767,7 +1775,7 @@ def guess_model_task(model):
         # Check for stereo flag first (highest priority)
         if cfg.get("stereo") is True:
             return "stereo3ddet"
-        
+
         m = cfg["head"][-1][-2].lower()  # output module name
         if m in {"classify", "classifier", "cls", "fc"}:
             return "classify"
