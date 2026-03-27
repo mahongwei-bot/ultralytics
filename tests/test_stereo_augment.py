@@ -1,19 +1,17 @@
-import os
 from pathlib import Path
 
-import numpy as np
 import cv2
+import numpy as np
 import pytest
-
-from ultralytics.models.yolo.stereo3ddet.augment import (
-    PhotometricAugmentor,
-    HorizontalFlipAugmentor,
-    RandomScaleAugmentor,
-    RandomCropAugmentor,
-    StereoAugmentationPipeline,
-)
 from ultralytics.data.kitti_stereo import KITTIStereoDataset
 
+from ultralytics.models.yolo.stereo3ddet.augment import (
+    HorizontalFlipAugmentor,
+    PhotometricAugmentor,
+    RandomCropAugmentor,
+    RandomScaleAugmentor,
+    StereoAugmentationPipeline,
+)
 
 ARTIFACT_DIR = Path("/root/ultralytics/tests/artifacts/stereo_aug")
 DATASET_ROOT = Path("/root/autodl-tmp/converted_kitti_3dop")
@@ -81,7 +79,7 @@ def draw_label_markers(img: np.ndarray, labels, is_right: bool = False):
 @pytest.mark.parametrize("seed", [7])
 def test_photometric_augmentor(seed):
     ensure_dir(ARTIFACT_DIR)
-    left, right, labels, img_id = load_real_sample()
+    left, right, _labels, img_id = load_real_sample()
     cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_photometric_left_before.png"), left)
     cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_photometric_right_before.png"), right)
 
@@ -94,12 +92,12 @@ def test_photometric_augmentor(seed):
     assert left_a.shape == left.shape and right_a.shape == right.shape
     assert not np.array_equal(left_a, left) or not np.array_equal(right_a, right)
 
-class TestHorizontalFlipAugmentor:
 
+class TestHorizontalFlipAugmentor:
     def test_disparity_preserved(self):
         left, right, labels, _ = load_real_sample()
         aug = HorizontalFlipAugmentor(p_apply=1.0)
-        left_f, right_f, labels_f = aug(left, right, labels)
+        _left_f, _right_f, labels_f = aug(left, right, labels)
 
         for obj_o, obj_f in zip(labels, labels_f):
             lb_o = obj_o["left_box"]
@@ -107,15 +105,15 @@ class TestHorizontalFlipAugmentor:
             lb_f = obj_f["left_box"]
             rb_f = obj_f["right_box"]
 
-            disp_o = (lb_o["center_x"] - rb_o["center_x"])
-            disp_f = (lb_f["center_x"] - rb_f["center_x"])
+            disp_o = lb_o["center_x"] - rb_o["center_x"]
+            disp_f = lb_f["center_x"] - rb_f["center_x"]
             # Option A (flip + swap): disparity preserved
             assert pytest.approx(disp_o, 1e-6) == disp_f
-    
+
     def test_height_consistency(self):
         left, right, labels, _ = load_real_sample()
         aug = HorizontalFlipAugmentor(p_apply=1.0)
-        left_f, right_f, labels_f = aug(left, right, labels)
+        _left_f, _right_f, labels_f = aug(left, right, labels)
 
         for obj_o, obj_f in zip(labels, labels_f):
             lb_o = obj_o["left_box"]
@@ -123,11 +121,11 @@ class TestHorizontalFlipAugmentor:
 
             assert pytest.approx(lb_o["center_y"], 1e-6) == lb_f["center_y"]
             assert pytest.approx(lb_o["height"], 1e-6) == lb_f["height"]
-    
+
     def test_depth_preserved(self):
         left, right, labels, _ = load_real_sample()
         aug = HorizontalFlipAugmentor(p_apply=1.0)
-        left_f, right_f, labels_f = aug(left, right, labels)
+        _left_f, _right_f, labels_f = aug(left, right, labels)
 
         for obj_o, obj_f in zip(labels, labels_f):
             lb_o = obj_o["left_box"]
@@ -135,19 +133,19 @@ class TestHorizontalFlipAugmentor:
             lb_f = obj_f["left_box"]
             rb_f = obj_f["right_box"]
 
-            disp_o = (lb_o["center_x"] - rb_o["center_x"])
-            disp_f = (lb_f["center_x"] - rb_f["center_x"])
+            disp_o = lb_o["center_x"] - rb_o["center_x"]
+            disp_f = lb_f["center_x"] - rb_f["center_x"]
             # Option A: disparity preserved => depth ~ 1/disp preserved
             if disp_o == 0 and disp_f == 0:
                 continue
-            depth_o = float('inf') if disp_o == 0 else (1.0 / disp_o)
-            depth_f = float('inf') if disp_f == 0 else (1.0 / disp_f)
+            depth_o = float("inf") if disp_o == 0 else (1.0 / disp_o)
+            depth_f = float("inf") if disp_f == 0 else (1.0 / disp_f)
             assert pytest.approx(depth_o, 1e-6) == depth_f
-    
+
     def test_3d_left_right_mapping(self):
         left, right, labels, _ = load_real_sample()
         aug = HorizontalFlipAugmentor(p_apply=1.0)
-        left_f, right_f, labels_f = aug(left, right, labels)
+        _left_f, _right_f, labels_f = aug(left, right, labels)
 
         for obj_o, obj_f in zip(labels, labels_f):
             lb_o = obj_o["left_box"]
@@ -157,13 +155,13 @@ class TestHorizontalFlipAugmentor:
             # Option A: flip + swap mapping
             assert pytest.approx(lb_f["center_x"], 1e-6) == 1.0 - rb_o["center_x"]
             assert pytest.approx(rb_f["center_x"], 1e-6) == 1.0 - lb_o["center_x"]
-    
+
     def test_principal_point_changes(self):
         # Option A mapping for centers under flip + swap
         left, right, labels, _ = load_real_sample()
-        W = left.shape[1]
+        left.shape[1]
         aug = HorizontalFlipAugmentor(p_apply=1.0)
-        left_f, right_f, labels_f = aug(left, right, labels)
+        _left_f, _right_f, labels_f = aug(left, right, labels)
         for obj_o, obj_f in zip(labels, labels_f):
             lb_o = obj_o["left_box"]
             lb_f = obj_f["left_box"]
@@ -171,19 +169,25 @@ class TestHorizontalFlipAugmentor:
             rb_f = obj_f["right_box"]
             assert pytest.approx(lb_f["center_x"], 1e-6) == 1.0 - rb_o["center_x"]
             assert pytest.approx(rb_f["center_x"], 1e-6) == 1.0 - lb_o["center_x"]
-    
+
 
 def test_horizontal_flip_augmentor():
     ensure_dir(ARTIFACT_DIR)
     left, right, labels, img_id = load_real_sample()
     cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_hflip_left_before.png"), draw_label_markers(left, labels, is_right=False))
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_hflip_right_before.png"), draw_label_markers(right, labels, is_right=True))
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_hflip_right_before.png"), draw_label_markers(right, labels, is_right=True)
+    )
 
     aug = HorizontalFlipAugmentor(p_apply=1.0)
     left_f, right_f, labels_f = aug(left, right, labels)
 
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_hflip_left_after.png"), draw_label_markers(left_f, labels_f, is_right=False))
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_hflip_right_after.png"), draw_label_markers(right_f, labels_f, is_right=True))
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_hflip_left_after.png"), draw_label_markers(left_f, labels_f, is_right=False)
+    )
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_hflip_right_after.png"), draw_label_markers(right_f, labels_f, is_right=True)
+    )
 
     assert np.array_equal(left_f, cv2.flip(right, 1))
     assert np.array_equal(right_f, cv2.flip(left, 1))
@@ -195,8 +199,8 @@ def test_horizontal_flip_augmentor():
     assert pytest.approx(lb_f["center_x"], 1e-6) == 1.0 - rb["center_x"]
     assert pytest.approx(rb_f["center_x"], 1e-6) == 1.0 - lb["center_x"]
 
-class TestScaleAugmentor:
 
+class TestScaleAugmentor:
     def test_baseline_unchanged(self):
         # baseline should be the same after scale=1.0
         left, right, labels, _ = load_real_sample()
@@ -209,7 +213,15 @@ class TestScaleAugmentor:
     def test_focal_length_scaled(self):
         # Verify calibration intrinsics scale with image resize
         left, right, labels, _ = load_real_sample()
-        from ultralytics.models.yolo.stereo3ddet.augment import StereoCalibration, StereoAugmentationPipeline, PhotometricAugmentor, HorizontalFlipAugmentor, RandomScaleAugmentor, RandomCropAugmentor
+        from ultralytics.models.yolo.stereo3ddet.augment import (
+            HorizontalFlipAugmentor,
+            PhotometricAugmentor,
+            RandomCropAugmentor,
+            RandomScaleAugmentor,
+            StereoAugmentationPipeline,
+            StereoCalibration,
+        )
+
         h, w = left.shape[:2]
         calib = StereoCalibration(fx=700.0, fy=700.0, cx=w / 2.0, cy=h / 2.0, baseline=0.54, height=h, width=w)
         s = 1.3
@@ -219,7 +231,7 @@ class TestScaleAugmentor:
             rscale=RandomScaleAugmentor(scale_range=(s, s), p_apply=1.0),
             rcrop=RandomCropAugmentor(p_apply=0.0),
         )
-        left_o, right_o, labels_o, calib_o = pipe.augment(left, right, labels, calibration=calib)
+        _left_o, _right_o, _labels_o, calib_o = pipe.augment(left, right, labels, calibration=calib)
         assert calib_o is not None
         # fx, fy, cx, cy scaled by actual integer resize factors
         sx = calib_o.width / float(calib.width)
@@ -229,12 +241,20 @@ class TestScaleAugmentor:
         assert pytest.approx(calib_o.cx, 1e-6) == calib.cx * sx
         assert pytest.approx(calib_o.cy, 1e-6) == calib.cy * sy
         assert pytest.approx(calib_o.baseline, 1e-6) == calib.baseline
-        assert calib_o.width == int(round(w * s)) and calib_o.height == int(round(h * s))
+        assert calib_o.width == round(w * s) and calib_o.height == round(h * s)
 
     def test_depth_preserved_after_scale(self):
         # Depth z = f * B / d should be invariant to uniform scaling
         left, right, labels, _ = load_real_sample()
-        from ultralytics.models.yolo.stereo3ddet.augment import StereoCalibration, StereoAugmentationPipeline, PhotometricAugmentor, HorizontalFlipAugmentor, RandomScaleAugmentor, RandomCropAugmentor
+        from ultralytics.models.yolo.stereo3ddet.augment import (
+            HorizontalFlipAugmentor,
+            PhotometricAugmentor,
+            RandomCropAugmentor,
+            RandomScaleAugmentor,
+            StereoAugmentationPipeline,
+            StereoCalibration,
+        )
+
         h, w = left.shape[:2]
         calib = StereoCalibration(fx=720.0, fy=720.0, cx=w / 2.0, cy=h / 2.0, baseline=0.54, height=h, width=w)
         # Use a single object to compute disparity from normalized centers
@@ -242,7 +262,7 @@ class TestScaleAugmentor:
         disp_norm = obj["left_box"]["center_x"] - obj["right_box"]["center_x"]
         # Convert normalized disparity to pixels in original image
         d_px = disp_norm * w
-        z_before = float('inf') if d_px == 0 else (calib.fx * calib.baseline) / d_px
+        z_before = float("inf") if d_px == 0 else (calib.fx * calib.baseline) / d_px
 
         s = 1.25
         pipe = StereoAugmentationPipeline(
@@ -251,24 +271,29 @@ class TestScaleAugmentor:
             rscale=RandomScaleAugmentor(scale_range=(s, s), p_apply=1.0),
             rcrop=RandomCropAugmentor(p_apply=0.0),
         )
-        left_o, right_o, labels_o, calib_o = pipe.augment(left, right, labels, calibration=calib)
+        left_o, _right_o, labels_o, calib_o = pipe.augment(left, right, labels, calibration=calib)
         assert calib_o is not None
         w_new = left_o.shape[1]
         disp_norm_after = labels_o[0]["left_box"]["center_x"] - labels_o[0]["right_box"]["center_x"]
         d_px_after = disp_norm_after * w_new
-        z_after = float('inf') if d_px_after == 0 else (calib_o.fx * calib_o.baseline) / d_px_after
+        z_after = float("inf") if d_px_after == 0 else (calib_o.fx * calib_o.baseline) / d_px_after
         assert pytest.approx(z_before, 1e-6) == z_after
+
 
 def test_random_scale_augmentor():
     ensure_dir(ARTIFACT_DIR)
     left, right, labels, img_id = load_real_sample()
     aug = RandomScaleAugmentor(scale_range=(1.2, 1.2), p_apply=1.0)
     left_s, right_s, labels_s = aug(left, right, labels)
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_rscale_left_after.png"), draw_label_markers(left_s, labels_s, is_right=False))
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_rscale_right_after.png"), draw_label_markers(right_s, labels_s, is_right=True))
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_rscale_left_after.png"), draw_label_markers(left_s, labels_s, is_right=False)
+    )
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_rscale_right_after.png"), draw_label_markers(right_s, labels_s, is_right=True)
+    )
 
-    assert left_s.shape[0] == int(round(left.shape[0] * 1.2))
-    assert left_s.shape[1] == int(round(left.shape[1] * 1.2))
+    assert left_s.shape[0] == round(left.shape[0] * 1.2)
+    assert left_s.shape[1] == round(left.shape[1] * 1.2)
     assert right_s.shape == left_s.shape
     assert labels_s == labels
 
@@ -279,11 +304,15 @@ def test_random_crop_augmentor():
     np.random.seed(123)
     aug = RandomCropAugmentor(crop_height_ratio=0.5, crop_width_ratio=0.5, p_apply=1.0)
     left_c, right_c, labels_c = aug(left, right, labels)
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_rcrop_left_after.png"), draw_label_markers(left_c, labels_c, is_right=False))
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_rcrop_right_after.png"), draw_label_markers(right_c, labels_c, is_right=True))
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_rcrop_left_after.png"), draw_label_markers(left_c, labels_c, is_right=False)
+    )
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_rcrop_right_after.png"), draw_label_markers(right_c, labels_c, is_right=True)
+    )
 
-    expected_h = int(round(left.shape[0] * 0.5))
-    expected_w = int(round(left.shape[1] * 0.5))
+    expected_h = round(left.shape[0] * 0.5)
+    expected_w = round(left.shape[1] * 0.5)
     assert left_c.shape[0] == expected_h and left_c.shape[1] == expected_w
     assert right_c.shape == left_c.shape
     lb_c = labels_c[0]["left_box"]
@@ -304,8 +333,12 @@ def test_stereo_augmentation_pipeline():
     )
     left_o, right_o, labels_o, _ = pipe.augment(left, right, labels, calibration=None)
 
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_pipeline_left_after.png"), draw_label_markers(left_o, labels_o, is_right=False))
-    cv2.imwrite(str(ARTIFACT_DIR / f"{img_id}_pipeline_right_after.png"), draw_label_markers(right_o, labels_o, is_right=True))
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_pipeline_left_after.png"), draw_label_markers(left_o, labels_o, is_right=False)
+    )
+    cv2.imwrite(
+        str(ARTIFACT_DIR / f"{img_id}_pipeline_right_after.png"), draw_label_markers(right_o, labels_o, is_right=True)
+    )
 
     assert np.array_equal(left_o, cv2.flip(right, 1))
     assert np.array_equal(right_o, cv2.flip(left, 1))

@@ -67,9 +67,7 @@ def load_stereo_config(cfg_path: str | Path) -> dict[str, Any]:
         # Validate mean_dims structure (should have entries for each class)
         for class_name, dims in mean_dims.items():
             if not isinstance(dims, (list, tuple)) or len(dims) != 3:
-                raise ValueError(
-                    f"mean_dims['{class_name}'] must be a list/tuple of 3 floats [L, W, H], got {dims}"
-                )
+                raise ValueError(f"mean_dims['{class_name}'] must be a list/tuple of 3 floats [L, W, H], got {dims}")
             if not all(isinstance(d, (int, float)) and d > 0 for d in dims):
                 raise ValueError(f"All dimensions in mean_dims['{class_name}'] must be positive numbers, got {dims}")
 
@@ -117,4 +115,3 @@ def validate_stereo_config(config: dict[str, Any]) -> bool:
 
 
 __all__ = ["load_stereo_config", "validate_stereo_config"]
-

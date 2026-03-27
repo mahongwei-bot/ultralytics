@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, List
-
 import torch
 import torch.nn as nn
 
@@ -22,8 +20,8 @@ class Stereo3DDetHeadYOLO11(nn.Module):
     """P3-only stereo3ddet head that reuses YOLO11 Detect assignment for positives.
 
     Outputs:
-      - det: YOLO Detect head outputs (list with 1 feature map) for bbox/cls (DFL format).
-      - aux branches: dense maps aligned with P3 grid, trained only on assigner positives.
+    - det: YOLO Detect head outputs (list with 1 feature map) for bbox/cls (DFL format).
+    - aux branches: dense maps aligned with P3 grid, trained only on assigner positives.
     """
 
     def __init__(self, nc: int, ch: int = 256):
@@ -46,7 +44,7 @@ class Stereo3DDetHeadYOLO11(nn.Module):
             }
         )
 
-    def forward(self, x: List[torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def forward(self, x: list[torch.Tensor]) -> dict[str, torch.Tensor]:
         # x is a list of feature maps from the neck; for P3-only we expect length==1.
         if not isinstance(x, list):
             x = [x]
@@ -55,10 +53,7 @@ class Stereo3DDetHeadYOLO11(nn.Module):
             raise ValueError(f"Stereo3DDetHeadYOLO11 expects 1 feature map (P3-only), got {len(x)}")
 
         feat = x[0]
-        out: Dict[str, torch.Tensor] = {"det": self.detect([feat])}
+        out: dict[str, torch.Tensor] = {"det": self.detect([feat])}
         for k, m in self.aux.items():
             out[k] = m(feat)
         return out
-
-
-

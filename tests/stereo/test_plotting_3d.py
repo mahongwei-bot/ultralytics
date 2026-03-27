@@ -33,7 +33,7 @@ def test_plot_boxes3d_handles_empty_list(sample_calibration_dict):
 
 
 def test_plot_stereo3d_boxes_combines_views(sample_stereo_pair, sample_boxes3d):
-    """plot_stereo3d_boxes should annotate both views and return a combined canvas."""
+    """Plot_stereo3d_boxes should annotate both views and return a combined canvas."""
     left_annotated, right_annotated, combined = plotting.plot_stereo3d_boxes(
         sample_stereo_pair.left_image,
         sample_stereo_pair.right_image,
