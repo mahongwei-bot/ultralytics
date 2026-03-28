@@ -31,16 +31,14 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import numpy as np
 import torch
 
 
 class TargetGenerator:
     """Generate ground truth targets for 10-branch Stereo CenterNet head.
 
-    Creates Gaussian heatmaps and regression targets for all 10 branches.
-    Following the paper, the bottom 4 vertices of the 3D bounding box are
-    projected onto the image plane as keypoints for geometric constraints.
+    Creates Gaussian heatmaps and regression targets for all 10 branches. Following the paper, the bottom 4 vertices of
+    the 3D bounding box are projected onto the image plane as keypoints for geometric constraints.
     """
 
     def __init__(
@@ -52,8 +50,8 @@ class TargetGenerator:
         """Initialize target generator.
 
         Args:
-            output_size: Output feature map size (H, W). Determined dynamically from model architecture.
-                         The actual downsampling factor depends on the model config (e.g., P3 = 8x, P4 = 16x).
+            output_size: Output feature map size (H, W). Determined dynamically from model architecture. The actual
+                downsampling factor depends on the model config (e.g., P3 = 8x, P4 = 16x).
             num_classes: Number of object classes.
             mean_dims: Mean dimensions per class [L, W, H] in meters.
         """
@@ -64,11 +62,11 @@ class TargetGenerator:
         # From paper Section 3.3: [L̄, W̄, H̄]^T = [3.88, 1.63, 1.53]^T for Car
         # We also include Pedestrian and Cyclist from KITTI statistics
         self.mean_dims = mean_dims or {
-            "Car": [3.89, 1.73, 1.52],       # L=3.89, W=1.73, H=1.52
-            "Pedestrian": [0.80, 0.50, 1.73], # L=0.80, W=0.50, H=1.73
-            "Cyclist": [1.76, 0.60, 1.77],    # L=1.76, W=0.60, H=1.77
+            "Car": [3.89, 1.73, 1.52],  # L=3.89, W=1.73, H=1.52
+            "Pedestrian": [0.80, 0.50, 1.73],  # L=0.80, W=0.50, H=1.73
+            "Cyclist": [1.76, 0.60, 1.77],  # L=1.76, W=0.60, H=1.77
         }
-        
+
         # Class name mapping (after filtering/remapping)
         self.class_names_map = {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
 
@@ -94,19 +92,17 @@ class TargetGenerator:
                   (normalized to letterboxed input image)
                   If not provided, computed from 3D parameters
             input_size: Input image size (H, W) after preprocessing (letterbox).
-            calib: Camera calibration parameters dict with fx, fy, cx, cy, baseline.
-                   Already transformed to letterboxed space by the dataset.
-                   If None, uses default KITTI values.
-            original_size: Original image size (H, W) before preprocessing.
-                   Used for reference, not for coordinate transformation.
-                   If None, uses KITTI default (375, 1242).
+            calib: Camera calibration parameters dict with fx, fy, cx, cy, baseline. Already transformed to letterboxed
+                space by the dataset. If None, uses default KITTI values.
+            original_size: Original image size (H, W) before preprocessing. Used for reference, not for coordinate
+                transformation. If None, uses KITTI default (375, 1242).
 
         Returns:
             Dictionary with 10 branch targets, each [num_classes or channels, H_out, W_out]
             where H_out, W_out are determined by the model's output size (architecture-agnostic).
         """
         input_h, input_w = input_size
-        
+
         # Scale calibration parameters to match preprocessed input size
         # Calibration parameters are typically in original image space (e.g., KITTI 1242x375)
         # We need to scale them to match the preprocessed input size
@@ -127,9 +123,7 @@ class TargetGenerator:
 
         # Process each object
         for label, calib, original_size in zip(labels, calib, original_size):
-            self._process_single_label(
-                label, targets, input_h, input_w, calib, original_size
-            )
+            self._process_single_label(label, targets, input_h, input_w, calib, original_size)
         return targets
 
     def _process_single_label(
@@ -154,14 +148,13 @@ class TargetGenerator:
         left_box = label["left_box"]
         right_box = label["right_box"]
         dimensions = label["dimensions"]
-        
+
         rotation_y = label["rotation_y"]
         location_3d = label["location_3d"]
         x_3d = location_3d["x"]
         z_3d = location_3d["z"]
         ray_angle = math.atan2(x_3d, z_3d)
         alpha = rotation_y - ray_angle
-        
 
         fx = calib["fx"]
         fy = calib["fy"]
@@ -235,9 +228,9 @@ class TargetGenerator:
         mean_dim = self.mean_dims.get(class_name, [1.0, 1.0, 1.0])
         # mean_dims is [L, W, H], decoder expects [ΔH, ΔW, ΔL] order
         dim_offset = [
-            dimensions["height"] - mean_dim[2],   # channel 0 = Δheight
-            dimensions["width"] - mean_dim[1],    # channel 1 = Δwidth
-            dimensions["length"] - mean_dim[0],   # channel 2 = Δlength
+            dimensions["height"] - mean_dim[2],  # channel 0 = Δheight
+            dimensions["width"] - mean_dim[1],  # channel 1 = Δwidth
+            dimensions["length"] - mean_dim[0],  # channel 2 = Δlength
         ]
         targets["dimensions"][:, center_y_int, center_x_int] = torch.tensor(dim_offset)
 
@@ -265,7 +258,7 @@ class TargetGenerator:
                 z_3d = (fx * baseline) / disparity
             else:
                 z_3d = 50.0  # Default depth
-            
+
             # X = (u - cx) × Z / fx
             x_3d = (center_x - cx) * z_3d / fx
             # Y = (v - cy) × Z / fy
@@ -273,7 +266,7 @@ class TargetGenerator:
 
         # Get dimensions in meters
         L = dimensions["length"]  # Length (forward direction)
-        W = dimensions["width"]   # Width (lateral direction)
+        W = dimensions["width"]  # Width (lateral direction)
         H = dimensions["height"]  # Height
 
         # Handle orientation - support both rotation_y (24-value) and alpha (22-value)
@@ -298,15 +291,11 @@ class TargetGenerator:
         #   |     |
         #   3 --- 2
         # Where the object faces from 3-0 edge toward 2-1 edge (forward direction)
-        
-        bottom_vertices_3d = self._compute_bottom_vertices_3d(
-            x_3d, y_3d, z_3d, L, W, H, theta
-        )
+
+        bottom_vertices_3d = self._compute_bottom_vertices_3d(x_3d, y_3d, z_3d, L, W, H, theta)
 
         # Project vertices to 2D image plane
-        bottom_vertices_2d = self._project_vertices_to_2d(
-            bottom_vertices_3d, fx, fy, cx, cy
-        )
+        bottom_vertices_2d = self._project_vertices_to_2d(bottom_vertices_3d, fx, fy, cx, cy)
 
         # Store vertex targets
 
@@ -315,25 +304,24 @@ class TargetGenerator:
             vx_out = vx * scale_w
             vy_out = vy * scale_h
 
-
             # 8. Vertices: Store as RELATIVE offsets from center (not absolute coordinates)
             # This keeps values bounded and reduces loss magnitude
             # Format: [dx0, dy0, dx1, dy1, dx2, dy2, dx3, dy3] where dx = vx - center_x
             dx = vx_out - center_x_out
             dy = vy_out - center_y_out
-            
+
             # Clip vertex offsets to reasonable bounds to prevent extreme values
             # Maximum offset should be within feature map bounds (allow 1.5x for safety)
             max_offset_x = self.output_w * 1.5
             max_offset_y = self.output_h * 1.5
             dx = max(-max_offset_x, min(dx, max_offset_x))
             dy = max(-max_offset_y, min(dy, max_offset_y))
-            
+
             # Normalize by feature map size to keep values in [-1.5, 1.5] range
             # This makes targets similar in scale to other branches and improves learning
             dx_normalized = dx / self.output_w
             dy_normalized = dy / self.output_h
-            
+
             targets["vertices"][i * 2, center_y_int, center_x_int] = dx_normalized
             targets["vertices"][i * 2 + 1, center_y_int, center_x_int] = dy_normalized
 
@@ -347,8 +335,8 @@ class TargetGenerator:
             # 10. Vertex distance: Euclidean distance from center to vertex
             # This helps correlate vertices with their parent center
             # Normalize distance by feature map diagonal to keep values in reasonable range
-            max_dist = math.sqrt(self.output_w ** 2 + self.output_h ** 2)  # Diagonal of feature map
-            dist = math.sqrt(dx ** 2 + dy ** 2)  # Use original dx, dy for distance calculation
+            max_dist = math.sqrt(self.output_w**2 + self.output_h**2)  # Diagonal of feature map
+            dist = math.sqrt(dx**2 + dy**2)  # Use original dx, dy for distance calculation
             dist_normalized = min(dist / max_dist, 1.5)  # Normalize and clip to 1.5x for safety
             targets["vertex_dist"][i, center_y_int, center_x_int] = dist_normalized
 
@@ -401,20 +389,20 @@ class TargetGenerator:
         # Vertex 1: front-right (+W/2, +L/2 in local)
         # Vertex 2: rear-right (+W/2, -L/2 in local)
         # Vertex 3: rear-left (-W/2, -L/2 in local)
-        
+
         # Actually in KITTI camera coords:
         # x = right, y = down, z = forward
         # Object local: forward = +z, right = +x
         # After rotation by theta around y-axis:
         # x_cam = x_local * cos(theta) + z_local * sin(theta)
         # z_cam = -x_local * sin(theta) + z_local * cos(theta)
-        
+
         # Four corners in local object coordinates (x_local, z_local)
         # Before rotation: length along z (forward), width along x (right)
         local_corners = [
-            (-half_W, half_L),   # Vertex 0: left-front
-            (half_W, half_L),    # Vertex 1: right-front
-            (half_W, -half_L),   # Vertex 2: right-rear
+            (-half_W, half_L),  # Vertex 0: left-front
+            (half_W, half_L),  # Vertex 1: right-front
+            (half_W, -half_L),  # Vertex 2: right-rear
             (-half_W, -half_L),  # Vertex 3: left-rear
         ]
 
@@ -423,11 +411,11 @@ class TargetGenerator:
             # Rotate around y-axis
             x_rot = x_local * cos_t + z_local * sin_t
             z_rot = -x_local * sin_t + z_local * cos_t
-            
+
             # Translate to world position
             x_world = x + x_rot
             z_world = z + z_rot
-            
+
             vertices_3d.append((x_world, y_bottom, z_world))
 
         return vertices_3d
@@ -509,16 +497,10 @@ class TargetGenerator:
         yy, xx = torch.meshgrid(y_coords, x_coords, indexing="ij")
 
         # Compute Gaussian centered on integer center (ensures peak = 1.0)
-        gaussian = torch.exp(
-            -((xx - cx_int) ** 2 / (2 * sigma_x ** 2) +
-              (yy - cy_int) ** 2 / (2 * sigma_y ** 2))
-        )
+        gaussian = torch.exp(-((xx - cx_int) ** 2 / (2 * sigma_x**2) + (yy - cy_int) ** 2 / (2 * sigma_y**2)))
 
         # Update heatmap with element-wise maximum
-        heatmap[y_min:y_max, x_min:x_max] = torch.maximum(
-            heatmap[y_min:y_max, x_min:x_max],
-            gaussian
-        )
+        heatmap[y_min:y_max, x_min:x_max] = torch.maximum(heatmap[y_min:y_max, x_min:x_max], gaussian)
 
     def _encode_orientation(self, alpha: float) -> torch.Tensor:
         """Encode orientation angle into Multi-Bin format.
@@ -580,12 +562,11 @@ def compute_perspective_keypoints(
 ) -> list[int]:
     """Determine which bottom vertices are "perspective keypoints".
 
-    From Paper Section 3.2: The perspective keypoints are the vertices
-    that can be accurately projected to the middle of the 2D bounding box.
-    They are determined by the viewing angle (orientation relative to camera).
+    From Paper Section 3.2: The perspective keypoints are the vertices that can be accurately projected to the middle of
+    the 2D bounding box. They are determined by the viewing angle (orientation relative to camera).
 
-    From Paper Figure 4: Different perspectives show different keypoints.
-    The perspective keypoints are the ones closest to the camera.
+    From Paper Figure 4: Different perspectives show different keypoints. The perspective keypoints are the ones closest
+    to the camera.
 
     Args:
         bottom_vertices_2d: List of 4 bottom vertex 2D coordinates.
@@ -596,13 +577,13 @@ def compute_perspective_keypoints(
     """
     # Normalize theta to [-π, π]
     theta = math.atan2(math.sin(theta), math.cos(theta))
-    
+
     # Based on the orientation, determine which vertices are visible
     # Perspective A (theta ≈ 0): vertices 0, 1 visible (front)
     # Perspective B (theta ≈ π/2): vertices 1, 2 visible (right side)
     # Perspective C (theta ≈ π): vertices 2, 3 visible (rear)
     # Perspective D (theta ≈ -π/2): vertices 3, 0 visible (left side)
-    
+
     # This is a simplified version - actual implementation may need refinement
     if -math.pi / 4 <= theta < math.pi / 4:
         # Front view: vertices 0, 1 visible

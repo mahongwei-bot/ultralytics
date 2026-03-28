@@ -255,9 +255,8 @@ def compute_3d_iou(
 ) -> float:
     """Compute 3D Intersection over Union (IoU) between two 3D bounding boxes.
 
-    Uses 3D box corner computation method following KITTI evaluation standard.
-    Computes intersection volume by generating 8 corners for each box and calculating
-    the axis-aligned bounding box of intersection.
+    Uses 3D box corner computation method following KITTI evaluation standard. Computes intersection volume by
+    generating 8 corners for each box and calculating the axis-aligned bounding box of intersection.
 
     Args:
         box1: First 3D box (Box3D object or array [x, y, z, l, w, h, orientation]).
@@ -362,7 +361,7 @@ def compute_3d_iou(
     # Clamp IoU to [0, 1] to handle this approximation error.
     iou = intersection / (union + eps)
     iou = min(max(iou, 0.0), 1.0)  # Clamp to valid IoU range
-    
+
     return float(iou)
 
 

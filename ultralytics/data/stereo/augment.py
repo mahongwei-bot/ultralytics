@@ -94,9 +94,7 @@ class StereoAugment:
 
         return left_img, right_img, calib
 
-    def _photometric_augment(
-        self, left_img: np.ndarray, right_img: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _photometric_augment(self, left_img: np.ndarray, right_img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Apply synchronized photometric augmentation.
 
         Args:
@@ -123,9 +121,7 @@ class StereoAugment:
 
         return left_img, right_img
 
-    def _horizontal_flip(
-        self, left_img: np.ndarray, right_img: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _horizontal_flip(self, left_img: np.ndarray, right_img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Apply horizontal flip with image swap.
 
         Args:
@@ -180,4 +176,3 @@ class StereoAugment:
             )
 
         return left_scaled, right_scaled, calib
-

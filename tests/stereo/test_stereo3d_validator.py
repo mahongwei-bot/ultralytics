@@ -140,13 +140,13 @@ class TestStereo3DDetValidator:
 
     def test_validator_full_workflow(self):
         """Test full validation workflow with mock dataloader (T015).
-        
+
         Acceptance criteria: Test verifies validator processes a batch of stereo images,
         computes AP3D metrics, and returns validation results dictionary with expected
         keys (ap3d_50, ap3d_70, maps3d_50, maps3d_70).
         """
         from ultralytics.data.stereo.calib import CalibrationParameters
-        
+
         # Create validator
         args = {
             "task": "stereo3ddet",
@@ -159,7 +159,7 @@ class TestStereo3DDetValidator:
         }
         validator = Stereo3DDetValidator(args=args)
         validator.device = torch.device("cpu")
-        
+
         # Set data with channels=6
         test_data = {
             "channels": 6,
@@ -167,7 +167,7 @@ class TestStereo3DDetValidator:
             "nc": 3,
         }
         validator.data = test_data
-        
+
         # Create mock calibration
         calib = CalibrationParameters(
             fx=721.5377,
@@ -178,25 +178,26 @@ class TestStereo3DDetValidator:
             image_width=1280,
             image_height=384,
         )
-        
+
         # Create mock dataloader class that implements __len__ and __iter__
         batch_size = 2
         num_batches = 2
-        
+
         class MockDataLoader:
             """Mock dataloader that yields batches of stereo images and labels."""
+
             def __init__(self):
                 self.batch_size = batch_size
                 self.num_batches = num_batches
-                
+
             def __len__(self):
                 return self.num_batches
-                
+
             def __iter__(self):
                 for batch_idx in range(self.num_batches):
                     # Create stereo images [B, 6, H, W]
                     stereo_imgs = torch.randn(self.batch_size, 6, 384, 1280)
-                    
+
                     # Create labels: list of lists of Box3D objects
                     labels = []
                     for img_idx in range(self.batch_size):
@@ -216,7 +217,7 @@ class TestStereo3DDetValidator:
                         )
                         gt_boxes.append(car_box)
                         labels.append(gt_boxes)
-                    
+
                     # Create batch dict
                     batch = {
                         "img": stereo_imgs,
@@ -225,9 +226,9 @@ class TestStereo3DDetValidator:
                         "im_file": [f"test_{batch_idx}_{i}.png" for i in range(self.batch_size)],
                     }
                     yield batch
-        
+
         mock_dataloader = MockDataLoader()
-        
+
         # Create mock model
         mock_model = MagicMock()
         mock_model.names = {0: "Car", 1: "Pedestrian", 2: "Cyclist"}
@@ -235,11 +236,11 @@ class TestStereo3DDetValidator:
         mock_model.pt = True
         mock_model.jit = False
         mock_model.fp16 = False
-        
+
         # Mock model forward to return 10-branch outputs
         num_classes = 3
         h, w = 96, 320  # Feature map size (H/4, W/4)
-        
+
         def mock_forward(x, **kwargs):
             """Mock forward that returns 10-branch outputs with some detections."""
             batch_size = x.shape[0]
@@ -262,30 +263,32 @@ class TestStereo3DDetValidator:
                 outputs["heatmap"][i, 0, 10, 20] = 0.8  # High confidence Car
                 outputs["heatmap"][i, 0, 15, 30] = 0.7  # Another Car
             return outputs
-        
+
         # Set forward method on the mock model
         mock_model.forward = mock_forward
+
         # Also make the model callable (__call__) to return forward outputs
         # AutoBackend wraps the model, so we need to ensure __call__ works
         def mock_call(x, augment=False, **kwargs):
             return mock_forward(x, **kwargs)
+
         mock_model.__call__ = mock_call
-        
+
         # Mock warmup
         def mock_warmup(imgsz):
             """Mock warmup that verifies channels=6."""
             if isinstance(imgsz, tuple) and len(imgsz) == 4:
-                batch, channels, h, w = imgsz
+                _batch, channels, _h, _w = imgsz
                 assert channels == 6, f"Warmup should use channels=6, got {channels}"
-        
+
         mock_model.warmup = mock_warmup
-        
+
         # Set validator's dataloader
         validator.dataloader = mock_dataloader
-        
+
         # Initialize metrics
         validator.init_metrics(mock_model)
-        
+
         # Patch get_dataset to return our test data
         with patch.object(validator, "get_dataset", return_value=test_data):
             # Patch AutoBackend to return our mock model directly
@@ -298,19 +301,20 @@ class TestStereo3DDetValidator:
                 mock_autobackend_instance.pt = True
                 mock_autobackend_instance.jit = False
                 mock_autobackend_instance.warmup = mock_warmup
-                
+
                 # Set the model attribute to our mock model (AutoBackend calls self.model(...))
                 mock_autobackend_instance.model = mock_model
-                
+
                 # Make AutoBackend.__call__ return our mock outputs
                 # AutoBackend.__call__ calls self.model(im, augment=augment, ...)
                 def autobackend_call(im, augment=False, visualize=False, embed=None, **kwargs):
                     return mock_forward(im, **kwargs)
+
                 mock_autobackend_instance.__call__ = autobackend_call
-                
+
                 # Make AutoBackend constructor return our instance
                 mock_autobackend_class.return_value = mock_autobackend_instance
-                
+
                 # Patch BaseValidator's else branch to skip FileNotFoundError when self.data is set
                 # Temporarily set args.data to avoid the check
                 original_data = validator.args.data
@@ -320,24 +324,24 @@ class TestStereo3DDetValidator:
                     results = validator(model=mock_model)
                 finally:
                     validator.args.data = original_data
-        
+
         # Verify results dictionary structure
         assert isinstance(results, dict), "Results should be a dictionary"
-        
+
         # Verify expected keys are present (acceptance criteria)
         expected_keys = ["ap3d_50", "ap3d_70", "maps3d_50", "maps3d_70"]
         for key in expected_keys:
             assert key in results, f"Results should contain '{key}' key"
-        
+
         # Verify types of values
         assert isinstance(results["ap3d_50"], dict), "ap3d_50 should be a dictionary"
         assert isinstance(results["ap3d_70"], dict), "ap3d_70 should be a dictionary"
         assert isinstance(results["maps3d_50"], (int, float)), "maps3d_50 should be a number"
         assert isinstance(results["maps3d_70"], (int, float)), "maps3d_70 should be a number"
-        
+
         # Verify validator processed batches
         assert validator.seen > 0, "Validator should have processed at least one sample"
-        
+
         # Verify metrics were computed
         assert hasattr(validator.metrics, "ap3d_50"), "Metrics should have ap3d_50 attribute"
         assert hasattr(validator.metrics, "ap3d_70"), "Metrics should have ap3d_70 attribute"
@@ -346,38 +350,38 @@ class TestStereo3DDetValidator:
 
     def test_validator_uses_6_channel_input(self):
         """Test that validator uses 6-channel input during warmup and inference (T090)."""
-        from unittest.mock import MagicMock, patch
-        
+        from unittest.mock import MagicMock
+
         args = {"task": "stereo3ddet", "imgsz": 640, "data": None}
         validator = Stereo3DDetValidator(args=args)
         validator.device = torch.device("cpu")
-        
+
         # Set self.data with channels=6 before calling super().__call__()
         validator.data = {
             "channels": 6,
             "names": {0: "Car", 1: "Pedestrian", 2: "Cyclist"},
             "nc": 3,
         }
-        
+
         # Verify channels=6 is set
         assert validator.data["channels"] == 6, "Validator should use 6 channels for stereo input"
-        
+
         # Mock model with warmup that checks channels
         mock_model = MagicMock()
         warmup_calls = []
-        
+
         def mock_warmup(imgsz):
             """Track warmup calls to verify channels=6 is used."""
             warmup_calls.append(imgsz)
             if isinstance(imgsz, tuple) and len(imgsz) == 4:
-                batch, channels, h, w = imgsz
+                _batch, channels, _h, _w = imgsz
                 assert channels == 6, f"Warmup should use channels=6, got {channels}"
-        
+
         mock_model.warmup = mock_warmup
         mock_model.stride = 32
         mock_model.pt = True
         mock_model.jit = False
-        
+
         # Verify that when BaseValidator would call warmup, it uses channels=6
         # This is tested by ensuring self.data["channels"] = 6 is preserved
         assert validator.data["channels"] == 6, "Validator data should have channels=6"
@@ -398,7 +402,7 @@ class TestStereoYOLOv11WrapperLoss:
         batch_size = 1
         imgsz = 384
         img = torch.randn(batch_size, 6, imgsz, imgsz)  # 6-channel input
-        
+
         # Create mock labels (list of label dicts per image)
         # batch["labels"] is list[list[dict]] - one list per image
         labels = [
@@ -413,7 +417,7 @@ class TestStereoYOLOv11WrapperLoss:
                 }
             ]
         ]
-        
+
         batch = {
             "img": img,
             "labels": labels,
@@ -439,7 +443,7 @@ class TestStereoYOLOv11WrapperLoss:
         batch_size = 1
         imgsz = 384
         img = torch.randn(batch_size, 6, imgsz, imgsz)
-        
+
         # Create mock labels (list of label dicts per image)
         labels = [
             [
@@ -453,7 +457,7 @@ class TestStereoYOLOv11WrapperLoss:
                 }
             ]
         ]
-        
+
         batch = {
             "img": img,
             "labels": labels,
@@ -494,7 +498,7 @@ class TestStereoYOLOv11WrapperLoss:
         batch_size = 1
         imgsz = 384
         img = torch.randn(batch_size, 6, imgsz, imgsz)
-        
+
         labels = [
             [
                 {
@@ -507,7 +511,7 @@ class TestStereoYOLOv11WrapperLoss:
                 }
             ]
         ]
-        
+
         batch = {"img": img, "labels": labels}
 
         # Call loss method
@@ -526,10 +530,20 @@ class TestStereoYOLOv11WrapperLoss:
         # Verify loss_items
         assert isinstance(loss_items, torch.Tensor), "loss_items should be a tensor"
         assert loss_items.shape == (10,), f"loss_items should have shape [10], got {loss_items.shape}"
-        
+
         # Verify loss_items contains all 10 components
-        expected_keys = ["heatmap", "offset", "bbox_size", "lr_distance", "right_width", 
-                        "dimensions", "orientation", "vertices", "vertex_offset", "vertex_dist"]
+        expected_keys = [
+            "heatmap",
+            "offset",
+            "bbox_size",
+            "lr_distance",
+            "right_width",
+            "dimensions",
+            "orientation",
+            "vertices",
+            "vertex_offset",
+            "vertex_dist",
+        ]
         assert len(loss_items) == len(expected_keys), f"loss_items should have {len(expected_keys)} components"
 
     def test_validator_calls_loss_method(self):
@@ -557,7 +571,7 @@ class TestStereoYOLOv11WrapperLoss:
         batch_size = 1
         imgsz = 384
         img = torch.randn(batch_size, 6, imgsz, imgsz)
-        
+
         labels = [
             [
                 {
@@ -570,7 +584,7 @@ class TestStereoYOLOv11WrapperLoss:
                 }
             ]
         ]
-        
+
         batch = {"img": img, "labels": labels}
 
         # Preprocess batch (validator expects normalized images)
@@ -596,11 +610,9 @@ class TestCalibrationLoading:
 
     def test_dataset_getitem_returns_calib_for_train(self):
         """Test that __getitem__ returns calib in dictionary for train split (T140)."""
-        from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetAdapterDataset
-        from unittest.mock import MagicMock, patch
         import tempfile
-        import shutil
-        from pathlib import Path
+
+        from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetAdapterDataset
 
         # Create temporary dataset structure
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -610,19 +622,19 @@ class TestCalibrationLoading:
             (tmpdir / "images" / "train" / "right").mkdir(parents=True, exist_ok=True)
             (tmpdir / "labels" / "train").mkdir(parents=True, exist_ok=True)
             (tmpdir / "calib" / "train").mkdir(parents=True, exist_ok=True)
-            
+
             # Create a dummy image file
             dummy_img = np.random.randint(0, 255, (375, 1242, 3), dtype=np.uint8)
             cv2.imwrite(str(tmpdir / "images" / "train" / "left" / "000000.png"), dummy_img)
             cv2.imwrite(str(tmpdir / "images" / "train" / "right" / "000000.png"), dummy_img)
-            
+
             # Create a dummy label file
             (tmpdir / "labels" / "train" / "000000.txt").write_text("")
-            
+
             # Create a dummy calib file
             calib_content = "fx: 721.5377\nfy: 721.5377\ncx: 609.5593\ncy: 172.8540\nbaseline: 0.54\n"
             (tmpdir / "calib" / "train" / "000000.txt").write_text(calib_content)
-            
+
             # Create adapter dataset with train split
             dataset = Stereo3DDetAdapterDataset(
                 root=str(tmpdir),
@@ -641,11 +653,9 @@ class TestCalibrationLoading:
 
     def test_dataset_getitem_returns_calib_for_val(self):
         """Test that __getitem__ returns calib in dictionary for val split (T140)."""
-        from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetAdapterDataset
-        from unittest.mock import MagicMock, patch
         import tempfile
-        import shutil
-        from pathlib import Path
+
+        from ultralytics.models.yolo.stereo3ddet.dataset import Stereo3DDetAdapterDataset
 
         # Create temporary dataset structure
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -655,19 +665,19 @@ class TestCalibrationLoading:
             (tmpdir / "images" / "val" / "right").mkdir(parents=True, exist_ok=True)
             (tmpdir / "labels" / "val").mkdir(parents=True, exist_ok=True)
             (tmpdir / "calib" / "val").mkdir(parents=True, exist_ok=True)
-            
+
             # Create a dummy image file
             dummy_img = np.random.randint(0, 255, (375, 1242, 3), dtype=np.uint8)
             cv2.imwrite(str(tmpdir / "images" / "val" / "left" / "000000.png"), dummy_img)
             cv2.imwrite(str(tmpdir / "images" / "val" / "right" / "000000.png"), dummy_img)
-            
+
             # Create a dummy label file
             (tmpdir / "labels" / "val" / "000000.txt").write_text("")
-            
+
             # Create a dummy calib file
             calib_content = "fx: 721.5377\nfy: 721.5377\ncx: 609.5593\ncy: 172.8540\nbaseline: 0.54\n"
             (tmpdir / "calib" / "val" / "000000.txt").write_text(calib_content)
-            
+
             # Create adapter dataset with val split
             dataset = Stereo3DDetAdapterDataset(
                 root=str(tmpdir),
@@ -719,7 +729,6 @@ class TestCalibrationLoading:
     def test_update_metrics_receives_calib(self):
         """Test that update_metrics receives calib in batch and uses it correctly (T142)."""
         from ultralytics.models.yolo.stereo3ddet.val import Stereo3DDetValidator, _labels_to_box3d_list
-        from ultralytics.data.stereo.box3d import Box3D
 
         # Create validator
         args = {"task": "stereo3ddet", "imgsz": 384, "data": None}
@@ -773,4 +782,3 @@ class TestCalibrationLoading:
             assert len(gt_boxes) > 0, "_labels_to_box3d_list should return boxes when calib is provided"
         except Exception as e:
             pytest.fail(f"_labels_to_box3d_list should work with calib: {e}")
-

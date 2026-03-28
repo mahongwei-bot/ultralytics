@@ -85,8 +85,7 @@ def is_paper_class(original_class_id: int) -> bool:
         original_class_id: Original KITTI class ID (0-7).
 
     Returns:
-        bool: True if the class is in the paper set (Car, Pedestrian, Cyclist),
-            False otherwise.
+        bool: True if the class is in the paper set (Car, Pedestrian, Cyclist), False otherwise.
 
     Examples:
         >>> is_paper_class(0)  # Car
@@ -111,4 +110,3 @@ def get_paper_class_names() -> dict[int, str]:
         'Pedestrian'
     """
     return PAPER_CLASS_NAMES.copy()
-
